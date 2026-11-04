@@ -1,0 +1,15 @@
+#!/bin/sh
+# Seed Kiln's configuration, then use twmx's upstream user updater.
+set -eu
+[ "$(id -u)" != 0 ] || { echo 'Run twmx-update as your normal user, without sudo.' >&2; exit 1; }
+export TWMX_PREFIX="$HOME/.local"
+export TWMX_SRC="$HOME/.local/src/twmx"
+mkdir -p "$TWMX_SRC"
+[ -f "$TWMX_SRC/config.h" ] || cp /usr/share/twmx/config.h "$TWMX_SRC/config.h"
+# Serialize timer and manual invocations through this wrapper.
+exec 9>"$TWMX_SRC/.update.lock"
+flock -n 9 || exit 0
+if [ -x "$TWMX_PREFIX/bin/twmx-update" ]; then
+    exec "$TWMX_PREFIX/bin/twmx-update" "$@"
+fi
+exec /usr/share/twmx/twmx-update "$@"
