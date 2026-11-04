@@ -158,9 +158,19 @@ twmx is not in the Arch repositories, so Kiln builds it:
    other package.
 
 `[kiln]` is unsigned (`SigLevel = Optional TrustAll`), acceptable only
-because it is a local, root-owned directory. Its packages update only when
+because it is a local, root-owned directory. Its packaged binaries update when
 you install from a newer Kiln ISO; hosting it online, signed, is the upgrade
-path.
+path. twmx also ships the upstream self-updater and a daily systemd user
+timer. That updater builds without root into `~/.local/bin`, preserving the
+configuration in `~/.local/src/twmx/config.h`. The package supplies the C
+compiler, make, pkgconf and curl needed for those builds. The X11 startup
+script prefers the user's build, falling back to the packaged binary.
+Failed builds leave the previous binary in place; updates never restart
+the running desktop. Run `/usr/bin/twmx-update` for a manual check, or
+`systemctl --user mask --now twmx-update.timer` to disable the timer.
+Re-enable it with `systemctl --user unmask twmx-update.timer` followed by
+`systemctl --user start twmx-update.timer`. Logs are available through
+`journalctl --user -u twmx-update.service`.
 
 `configs/` is a home directory skeleton (`.xinitrc`, `.Xresources`,
 `.config/...`) that the installer puts in `/etc/skel`, so every new user
