@@ -1,65 +1,156 @@
-# Kiln Linux
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/mark-triangle-light.svg">
+    <img src="branding/mark-triangle.svg" alt="Kiln Linux" width="96">
+  </picture>
+</p>
 
-A minimal Arch Linux based distribution: Arch's repositories and pacman,
-a small live ISO with a Void-style installer, a choice of desktops (twmx by default), and
-`kiln`, a tool that keeps your package sets in readable profile files.
+<h1 align="center">Kiln Linux</h1>
 
-| Component | Choice |
-|---|---|
-| Base | Arch Linux (official repositories, pacman) |
-| Init | systemd |
-| Desktop | [twmx](https://github.com/arcbaseproject/twmx) on X11 (default); i3, Sway, Hyprland, XFCE, KDE Plasma, GNOME, or none |
-| Network | NetworkManager (installed), systemd-networkd + iwd (live ISO) |
-| Audio (optional) | PipeWire |
-| Login | window managers start on tty1 login; XFCE, Plasma, GNOME get a login screen |
-| Boot | systemd-boot (installed, UEFI); ISO boots UEFI and BIOS |
+<p align="center">
+  A small Arch Linux distribution with a Void-style installer, a tiling desktop,<br>
+  and <code>kiln</code>, which keeps your package sets in plain TOML files.
+</p>
 
-## Quick start
+<p align="center">
+  <img src="docs/images/fastfetch.png" alt="fastfetch on a fresh Kiln Linux install: Kiln logo, 279 packages, 290 MiB of memory in use" width="640">
+</p>
 
-```sh
-sudo pacman -S --needed archiso rust base-devel git   # build deps
-make test                                 # checks, no root
-make iso                                  # out/kilnlinux-YYYY.MM.DD-x86_64.iso, no root
-sudo pacman -S --needed qemu-desktop edk2-ovmf
-make run                                  # boot it in QEMU (UEFI) with a blank disk
+Kiln Linux is Arch underneath. You keep pacman, the official repositories and
+the Arch wiki. Kiln adds a live ISO that boots on UEFI and BIOS, an installer
+that asks a few questions and sets up systemd-boot, a choice of seven
+desktops with [twmx](https://github.com/arcbaseproject/twmx) as the default,
+and the `kiln` tool.
+
+The screenshot shows a fresh install with the default twmx desktop: 279
+packages, 290 MiB of memory in use at the login console, and no Kiln service
+running in the background.
+
+## kiln: package profiles
+
+You write the packages you want in a profile:
+
+```toml
+# ~/.config/kiln/profiles/dev.toml
+[profile]
+name = "dev"
+description = "My editor and build tools"
+
+[packages]
+official = ["git", "neovim", "base-devel"]
 ```
 
-In the live system (auto-login as root), run `kiln-install`.
-After installing, `make run-disk` boots the installed disk.
+Then kiln compares it with the system and lets pacman install what's missing:
 
-## Layout
+```sh
+kiln plan dev                  # what would change; changes nothing
+sudo kiln apply dev            # pacman installs the missing packages
+sudo kiln remove dev --purge   # uninstall what kiln installed for it
+```
+
+pacman stays in charge. kiln asks pacman what is installed, runs pacman for
+every change, and records only the packages it installed itself. A purge
+leaves alone anything you installed by hand and anything another active
+profile lists. Run `apply` twice and the second run does nothing.
+[docs/kiln.md](docs/kiln.md) covers the rest.
+
+## Desktops
+
+The installer offers these. Each one is a kiln profile, so you can add or
+swap one later with `sudo kiln apply <name>`.
+
+| Desktop | Session | Starts with |
+|---|---|---|
+| **twmx** (default) | X11, tiling | a login on tty1 |
+| i3 | X11, tiling | a login on tty1 |
+| Sway | Wayland, tiling | a login on tty1 |
+| Hyprland | Wayland, tiling | a login on tty1 |
+| XFCE | X11 | the LightDM login screen |
+| KDE Plasma | Wayland | the SDDM login screen |
+| GNOME | Wayland | the GDM login screen |
+| None | console | |
+
+twmx is a one-file tiling window manager grown out of TinyWM. On Kiln it
+comes with xterm on Super+Return, dmenu on Super+d and dunst for
+notifications, in Kiln's dark-and-brick colors. Kiln builds twmx from a
+pinned commit and ships it in a small local `[kiln]` pacman repository.
+
+## Install
+
+1. Download or build the ISO and write it to a USB stick:
+   `sudo dd if=kilnlinux-*.iso of=/dev/sdX bs=4M conv=fsync status=progress`
+   (this erases the stick).
+2. Boot it in UEFI mode. The live system logs you in as root.
+3. Run `kiln-install`.
+
+The installer opens on a menu of every setting with its current value:
+keyboard, network, hostname, locale, time zone, root, user, desktop,
+extras, disk and boot loader. Visit them in any order, then pick Install.
+You get a summary first, and you type the disk name before the installer
+erases anything. For Wi-Fi, the Network item opens `iwctl`.
+
+You can also partition the disk yourself with cfdisk, choose ext4 or btrfs,
+and add PipeWire audio or developer tools. `kiln-install --config FILE`
+runs the same install with no questions.
+
+## Build it
+
+On Arch Linux:
+
+```sh
+sudo pacman -S --needed archiso rust base-devel git
+make test      # unit, integration and lint checks
+make iso       # writes out/kilnlinux-YYYY.MM.DD-x86_64.iso; no root needed
+```
+
+archiso builds inside a user namespace, so `make iso` runs as your user. To
+try the result in a VM:
+
+```sh
+sudo pacman -S --needed qemu-desktop edk2-ovmf
+make run       # boot the ISO (UEFI) with a blank 20 GiB disk
+make run-disk  # boot what you installed
+make e2e       # install unattended in QEMU, boot it, take screenshots
+```
+
+## Repository
 
 ```text
-archiso/kiln/      archiso profile (derived from upstream releng)
-packages/kiln/     the kiln CLI (Rust)
-packages/kiln-install/kiln-install   the installer (bash + dialog)
-packages/twmx/     PKGBUILD + Kiln config.h for twmx, built into the [kiln] repo
-profiles/          core; twmx, i3, sway, hyprland, xfce, plasma, gnome; developer, audio
-configs/           home skeleton: .xinitrc, .Xresources, .config/* (goes to /etc/skel)
-scripts/           build.sh, test.sh, qemu.sh
-docs/              architecture, kiln, installing, testing
-branding/          marks (SVG), logo generator, boot splash
+archiso/kiln/           archiso profile, derived from upstream releng
+packages/kiln/          the kiln CLI (Rust; depends on serde and toml)
+packages/kiln-install/  the installer (bash and dialog)
+packages/twmx/          PKGBUILD and Kiln's config.h for twmx
+profiles/               core, the seven desktops, developer, audio
+configs/                home skeleton for new users: .xinitrc, .Xresources, .config
+scripts/                build.sh, test.sh, qemu.sh
+tests/qemu/             the end-to-end install test
+branding/               marks, boot splash, colors
+docs/                   architecture, kiln, installing, testing
 ```
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md): how the pieces fit, and why; modifying the distribution
-- [docs/kiln.md](docs/kiln.md): using `kiln` and pacman, writing profiles
-- [docs/install.md](docs/install.md): building, QEMU, installing
-- [docs/testing.md](docs/testing.md): what is tested, and how to measure resource use
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Architecture](docs/architecture.md): how the ISO, installer and kiln fit together, and how to change them
+- [kiln and pacman](docs/kiln.md): commands, writing profiles, what `--purge` removes
+- [Installing](docs/install.md): building, QEMU, USB sticks, the installer menus
+- [Testing](docs/testing.md): what we have tested, what we haven't, and resource use
+- [Contributing](CONTRIBUTING.md)
 
 ## Status
 
-Builds rootless with archiso; `make test` passes; `make e2e` installs the ISO
-in QEMU unattended (UEFI, twmx) and boots the result to a working twmx
-session. See docs/testing.md for what has and has not been verified.
+Kiln Linux is young. `make e2e` installs the ISO in QEMU and boots the
+result into twmx, and that path works today. Still missing:
 
-Known limits: the installer is UEFI-only (the ISO itself boots on BIOS); no
-disk encryption option; `kiln` is copied into place, not installed as a
-pacman package; `[kiln]` packages (twmx) update only with a new ISO.
+- BIOS installs (the ISO itself boots on BIOS)
+- disk encryption in the installer
+- online updates for `[kiln]` packages: twmx updates when you install from a newer ISO
+- a pacman package for kiln itself (the installer copies the binary)
+
+The other six desktops go through the same installer steps, but nobody has
+installed each one in a VM yet. [docs/testing.md](docs/testing.md) keeps the
+list.
 
 ## License
 
-MIT (see LICENSE), except `archiso/kiln/`, which is derived from archiso's
-releng profile and is GPL-3.0-or-later like archiso.
+MIT, see [LICENSE](LICENSE). `archiso/kiln/` derives from archiso's releng
+profile and stays GPL-3.0-or-later, like archiso.
