@@ -1,0 +1,22 @@
+/* Kiln Linux waybar style: Kiln Graphite (themes/graphite). Reference: man 5 waybar */
+* {
+    font-family: "@font_mono@";
+    font-size: @font_size@pt;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+}
+window#waybar {
+    background: #@bg@;
+    color: #@fg@;
+    border-bottom: 1px solid #@line@;
+}
+#workspaces button {
+    padding: 0 6px;
+    color: #@muted@;
+    background: transparent;
+}
+#workspaces button.active { background: #@accent@; color: #@fg@; }
+#workspaces button.urgent { background: #@urgent@; color: #@fg@; }
+#window { color: #@muted@; padding-left: 12px; }
+#clock { padding-right: 8px; }

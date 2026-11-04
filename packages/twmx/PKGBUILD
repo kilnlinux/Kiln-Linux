@@ -2,7 +2,7 @@
 # Built by scripts/build.sh into the [kiln] repository shipped on the ISO.
 pkgname=twmx
 pkgver=2.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Small, fast tiling window manager for X11, grown out of TinyWM (Kiln Linux build)"
 arch=('x86_64')
 url="https://github.com/arcbaseproject/twmx"
@@ -18,7 +18,7 @@ source=("git+https://github.com/arcbaseproject/twmx.git#commit=${_commit}"
         "twmx-update.service"
         "twmx-update.timer")
 sha256sums=('SKIP'
-            '6805adf90e3684e62c7539a915e2d72f3b6ba9f85c98c670e56e9c01b7cefd99'
+            'aff3d2b1da1e7254134f4d070b32200813a439f1d1b72b644c8d5295ed62f872'
             '5dc303ec065ca81bdb68aa4a427ff46c52cfb3264f91d75c234c03db043cf850'
             '47071d5b3eda31d1bea6d28b5e030f1c3a4bdd54e2b4da323a9e36fa33eb806d'
             '4832cbb88179a68c8baad84c45a9b9e7e775b834b28558f871091502c0d3636d')

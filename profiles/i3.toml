@@ -8,7 +8,8 @@ description = "i3 X11 tiling desktop: i3status, i3lock, xterm, dmenu, dunst"
 official = [
     "i3-wm",
     "i3status",       # status bar text
-    "i3lock",         # screen locker
+    "i3lock",         # screen locker (Super+Escape)
+    "maim",           # screenshots (Print, Shift+Print)
     "xorg-server",
     "xorg-xinit",     # startx
     "xorg-xrdb",      # loads ~/.Xresources

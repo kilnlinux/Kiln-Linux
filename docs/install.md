@@ -23,8 +23,9 @@ fresh. `make clean` removes everything generated.
 ```sh
 sudo pacman -S --needed qemu-desktop edk2-ovmf
 make run          # ISO, UEFI, blank 20 GiB disk at build/qemu/disk.qcow2
-make run-bios     # ISO, legacy BIOS (live system only)
+make run-bios     # ISO, legacy BIOS
 make run-disk     # boot the installed disk
+make run-disk-bios  # boot the installed disk, legacy BIOS
 ```
 
 KVM is used when `/dev/kvm` is accessible. To start over with a blank disk:
@@ -45,7 +46,7 @@ sudo dd if=out/kilnlinux-*.iso of=/dev/sdX bs=4M conv=fsync oflag=direct status=
 
 ## Install
 
-Boot the ISO **in UEFI mode** (the installer refuses BIOS boots), then:
+Boot the ISO in UEFI or BIOS mode (on BIOS, choose GRUB or Limine), then:
 
 ```sh
 iwctl                 # Wi-Fi only; Ethernet is automatic
@@ -64,8 +65,8 @@ order (arrow keys, Enter), then Install:
 | User account | your login, in `wheel`, with sudo |
 | Desktop | twmx (default), i3, Sway, Hyprland, XFCE, KDE Plasma, GNOME, or none |
 | Extras | PipeWire audio, developer tools |
-| Disk | erase a whole disk (1 GiB EFI partition + root), or partition with cfdisk and pick the EFI and root partitions; ext4 or btrfs |
-| Boot loader | systemd-boot (UEFI) |
+| Disk | erase a whole disk (1 GiB EFI partition + root), or partition with cfdisk and pick the EFI and root partitions; ext4 or btrfs; optional LUKS2 encryption of root (passphrase at every boot) |
+| Boot loader | systemd-boot (default on UEFI, UEFI only), GRUB (default on BIOS) or Limine |
 
 Install checks everything first, shows a summary, and asks you to type the
 disk name before erasing it.
@@ -76,6 +77,8 @@ variables listed at the top of the script, for example:
 ```sh
 DISK=/dev/vda SCHEME=auto FS=ext4 DESKTOP=twmx EXTRAS=(audio)
 USER_NAME=me USER_PW='change me' TIMEZONE=Europe/Berlin
+ENCRYPT=yes LUKS_PW='disk passphrase'   # optional
+BOOTLOADER=limine                       # optional: systemd-boot, grub, limine
 ```
 
 A locked root means systemd's emergency shell can't log in; boot with

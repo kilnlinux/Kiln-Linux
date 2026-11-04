@@ -18,9 +18,9 @@
 
 Kiln Linux is Arch underneath. You keep pacman, the official repositories and
 the Arch wiki. Kiln adds a live ISO that boots on UEFI and BIOS, an installer
-that asks a few questions and sets up systemd-boot, a choice of seven
-desktops with [twmx](https://github.com/arcbaseproject/twmx) as the default,
-and the `kiln` tool.
+that asks a few questions and sets up systemd-boot, GRUB or Limine, a choice
+of seven desktops with [twmx](https://github.com/arcbaseproject/twmx) as the
+default, and the `kiln` tool.
 
 The screenshot shows a fresh install with the default twmx desktop: 279
 packages, 290 MiB of memory in use at the login console, and no Kiln service
@@ -71,8 +71,9 @@ swap one later with `sudo kiln apply <name>`.
 | None | console | |
 
 twmx is a one-file tiling window manager grown out of TinyWM. On Kiln it
-comes with xterm on Super+Return, dmenu on Super+d and dunst for
-notifications, in Kiln's dark-and-brick colors. Kiln builds twmx from a
+comes with polybar, xterm on Super+Return, dmenu on Super+d, dunst for
+notifications, i3lock on Super+Escape and screenshots on Print, in Kiln
+Graphite, the dark-and-brick theme every Kiln desktop shares. Kiln builds twmx from a
 pinned commit and ships it in a small local `[kiln]` pacman repository.
 A daily user timer checks GitHub and builds updates into `~/.local/bin`,
 keeping Kiln's colors and your changes to `~/.local/src/twmx/config.h`.
@@ -95,8 +96,8 @@ You get a summary first, and you type the disk name before the installer
 erases anything. For Wi-Fi, the Network item opens `iwctl`.
 
 You can also partition the disk yourself with cfdisk, choose ext4 or btrfs,
-and add PipeWire audio or developer tools. `kiln-install --config FILE`
-runs the same install with no questions.
+encrypt the root partition with LUKS2, and add PipeWire audio or developer
+tools. `kiln-install --config FILE` runs the same install with no questions.
 
 ## Build it
 
@@ -127,6 +128,7 @@ packages/kiln-install/  the installer (bash and dialog)
 packages/twmx/          PKGBUILD and Kiln's config.h for twmx
 profiles/               core, the seven desktops, developer, audio
 configs/                home skeleton for new users: .xinitrc, .Xresources, .config
+themes/                 Kiln Graphite: the colors, fonts and spacing configs/ is built from
 scripts/                build.sh, test.sh, qemu.sh
 tests/qemu/             the end-to-end install test
 branding/               marks, boot splash, colors
@@ -146,8 +148,6 @@ docs/                   architecture, kiln, installing, testing
 Kiln Linux is young. `make e2e` installs the ISO in QEMU and boots the
 result into twmx, and that path works today. Still missing:
 
-- BIOS installs (the ISO itself boots on BIOS)
-- disk encryption in the installer
 - a hosted repository for `[kiln]` package updates; twmx currently updates per user from GitHub
 - a pacman package for kiln itself (the installer copies the binary)
 

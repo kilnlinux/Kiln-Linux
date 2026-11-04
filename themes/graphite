@@ -1,0 +1,43 @@
+# Kiln Graphite: the default desktop theme. Hex colors without '#'.
+# scripts/render-theme.sh replaces @name@ in configs/ with these values when
+# building the ISO. A new theme is a copy of this file with new values.
+
+# Surfaces, darkest to lightest.
+bg=1a1a1a        # desktop, terminal, bar background (brand background)
+surface=242322   # menus, notifications, inactive bar items
+line=34322f      # unfocused borders, separators
+
+# Text.
+fg=ededed        # body text (brand text)
+muted=8c8780     # secondary text: inactive workspaces, hints
+
+# Accent: kiln brick (brand accent). Borders and fills, with fg text on top
+# (contrast 5.1:1); too dark for text on bg.
+accent=a4471f
+urgent=c0392b
+
+# Terminal ANSI colors 0-15.
+color0=1a1a1a
+color1=c0392b
+color2=6a9955
+color3=e8a33d
+color4=5d8ac0
+color5=a97bbf
+color6=4fa3a5
+color7=cccccc
+color8=555555
+color9=e05a4b
+color10=8ec07c
+color11=f0c36b
+color12=83a5d6
+color13=c59bd6
+color14=6fc3c5
+color15=ededed
+
+# Type and spacing, shared by every window manager.
+font_mono="DejaVu Sans Mono"
+font_sans="DejaVu Sans"
+font_size=10
+border=2         # window border, px
+gap=6            # gap between windows and screen edges, px
+bar_height=22    # px

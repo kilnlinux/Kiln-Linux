@@ -44,10 +44,10 @@ terminal, so nothing is confirmed by accident.
 | Profile | Contents |
 |---|---|
 | `core` | networkmanager, sudo, nano, less, man-db, fastfetch |
-| `twmx` | twmx, xorg-server, xorg-xinit, xorg-xrdb, xorg-xsetroot, xorg-xrandr, xterm, dmenu, dunst, ttf-dejavu (the default desktop) |
-| `i3` | i3-wm, i3status, i3lock, Xorg, xterm, dmenu, dunst |
-| `sway` | sway, swaybg, swaylock, foot, fuzzel, mako |
-| `hyprland` | hyprland, xdg-desktop-portal-hyprland, kitty, wofi, mako |
+| `twmx` | twmx, xorg-server, xorg-xinit, xorg-xrdb, xorg-xsetroot, xorg-xrandr, xterm, dmenu, dunst, polybar, i3lock, maim, ttf-dejavu (the default desktop) |
+| `i3` | i3-wm, i3status, i3lock, Xorg, xterm, dmenu, dunst, maim |
+| `sway` | sway, swaybg, swaylock, foot, fuzzel, mako, grim, slurp |
+| `hyprland` | hyprland, xdg-desktop-portal-hyprland, waybar, foot, fuzzel, mako, swaylock, grim, slurp |
 | `xfce` | XFCE core components, thunar, LightDM |
 | `plasma` | plasma-desktop, SDDM, konsole, dolphin, plasma-nm, kscreen |
 | `gnome` | gnome-shell, GDM, control center, console, nautilus |

@@ -83,13 +83,25 @@ Install steps: GPT with a 1 GiB EFI system partition and a root partition;
 tools; `genfstab -U`; time zone, locale, keymap, hostname; `kiln apply` of
 each chosen profile inside the chroot; user with sudo, root locked or with
 the password you chose;
-`mkinitcpio -P`; `bootctl install` and loader entries; then checks for the
-kernel, initramfs, boot loader, root UUID in the boot entry and fstab, the
-user, os-release and `kiln doctor`.
+`mkinitcpio -P`; the boot loader; then checks for the kernel, initramfs,
+boot loader, root UUID in the boot entry and fstab, the user, os-release and
+`kiln doctor`.
 
-Why systemd-boot: it ships with systemd (no extra package), its config is
-three short text files, and `systemd-boot-update.service` keeps it current.
-It is UEFI-only, which is why BIOS installs wait for a GRUB path.
+Boot loaders: all three boot the kernel and initramfs from the FAT32
+partition mounted at `/boot` (the EFI system partition; on BIOS the same
+kind of partition, plus a 1 MiB BIOS boot partition for the loader's stage 2).
+
+| | systemd-boot | GRUB | Limine |
+|---|---|---|---|
+| Firmware | UEFI | UEFI, BIOS | UEFI, BIOS |
+| Config | `/boot/loader/entries/kiln.conf` | `/etc/default/grub`, then `grub-mkconfig` | `/boot/limine.conf` |
+| Kept current by | `systemd-boot-update.service` | `/etc/pacman.d/hooks/kiln-grub.hook` | `/etc/pacman.d/hooks/kiln-limine.hook` |
+
+systemd-boot is the UEFI default: it ships with systemd (no extra package)
+and its config is three short text files. GRUB is the BIOS default. Arch
+itself never reinstalls GRUB or Limine to the disk after a package upgrade;
+Kiln's pacman hooks do, so the loader on the disk matches its package.
+Kernel upgrades need nothing: the kernel and initramfs keep their file names.
 
 Why profiles are applied with `kiln` during install: the installed system
 then has correct kiln state from the start, so `kiln remove twmx --purge`
@@ -142,9 +154,56 @@ The `official` path stays unchanged. Sources that build third-party code
 
 The default desktop, the `twmx` profile, is X11 with [twmx](https://github.com/arcbaseproject/twmx),
 a one-file tiling window manager grown out of TinyWM: xterm (Super+Return),
-dmenu (Super+d), dunst for notifications, nothing else running. twmx has no
-runtime config; its config is a C header compiled in, so Kiln's colors live
-in `packages/twmx/config.h`.
+dmenu (Super+d), dunst for notifications and polybar, nothing else running.
+twmx has no bar of its own, but it reserves the space of dock windows and
+publishes its workspaces over EWMH, which polybar's `xworkspaces` module
+reads, so the bar needs no twmx changes. twmx has no runtime config; its
+config is a C header compiled in, so Kiln's colors and keys live in
+`packages/twmx/config.h`.
+
+### Theme: Kiln Graphite
+
+Every desktop Kiln configures (twmx, i3, sway, Hyprland) shares one theme,
+`themes/graphite`: charcoal `#1a1a1a`, a warm graphite surface `#242322` for
+menus and notifications, `#34322f` for unfocused borders and separators,
+`#ededed` text with `#8c8780` for secondary text, and the kiln brick
+`#a4471f` as the single accent. The accent marks only focus: the focused
+window's border, the current workspace, the selected launcher entry. Borders
+are 2 px, gaps 6 px, bars 22 px with a 1 px line under them, all text DejaVu
+Sans Mono 10 (sans for launcher and notifications). No rounding, blur,
+shadows or animations.
+
+Files in `configs/` contain `@name@` where a theme value goes (`#@accent@`,
+`@gap@`). `scripts/build.sh` copies `configs/` into the ISO and runs
+`scripts/render-theme.sh themes/graphite` on the copy; `make test` renders
+it too and fails on any name the theme doesn't define. twmx's `config.h` is
+compiled, so it holds literal colors; the test checks they are Graphite's.
+
+To add a theme: copy `themes/graphite` and change the values. There is no
+theme switcher yet: render a theme by hand with
+`scripts/render-theme.sh themes/NAME DIR` on a copy of `configs/`.
+
+XFCE, Plasma and GNOME keep their own themes; GTK apps elsewhere get the
+dark variant of Adwaita (`~/.config/gtk-3.0/settings.ini`).
+
+### Keys
+
+The same in twmx, i3, sway and Hyprland unless noted:
+
+| Keys | Action |
+|---|---|
+| Super+Return | terminal |
+| Super+d | launcher |
+| Super+q | close window |
+| Super+h/j/k/l | focus left/down/up/right (twmx: j/k cycle focus, h/l resize the master area) |
+| Super+Shift+h/j/k/l | move window (twmx: Shift+j/k) |
+| Super+1–9 | go to workspace |
+| Super+Shift+1–9 | move window to workspace |
+| Super+Shift+Space | toggle floating |
+| Super+f | fullscreen |
+| Super+Escape | lock the screen |
+| Print, Shift+Print | screenshot of the screen, or of a region, to ~/Pictures/Screenshots |
+| Super+Shift+e | exit (twmx: Super+Shift+q) |
 
 twmx is not in the Arch repositories, so Kiln builds it:
 
@@ -179,7 +238,7 @@ gets it. Existing users copy it: `cp -rn /etc/skel/. ~/`.
 Window managers have no display manager. Instead the installer appends to
 `/etc/skel/.bash_profile` (so the new user's `~/.bash_profile`) a few lines
 that start the desktop when you log in on tty1: `exec startx` for twmx and
-i3, `exec sway` or `exec Hyprland` for those. Other ttys stay plain
+i3, `exec sway` or `exec start-hyprland` for those. Other ttys stay plain
 consoles. Delete the lines to boot to the console. Running `twmx` by hand on
 a console fails with "cannot open display": it needs an X server, which
 `startx` starts.

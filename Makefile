@@ -1,5 +1,5 @@
 # Kiln Linux. Run `make help`.
-.PHONY: help iso test e2e run run-bios run-disk clean
+.PHONY: help iso test e2e run run-bios run-disk run-disk-bios clean
 
 help:
 	@echo "make iso        build the ISO into out/ (no root needed)"
@@ -8,6 +8,7 @@ help:
 	@echo "make run        boot the newest ISO in QEMU (UEFI) with a blank disk"
 	@echo "make run-bios   boot the newest ISO in QEMU (legacy BIOS)"
 	@echo "make run-disk   boot the installed QEMU disk (UEFI)"
+	@echo "make run-disk-bios  boot the installed QEMU disk (legacy BIOS)"
 	@echo "make clean      remove build/, out/ and cargo output"
 
 iso:
@@ -27,6 +28,9 @@ run-bios:
 
 run-disk:
 	scripts/qemu.sh disk
+
+run-disk-bios:
+	scripts/qemu.sh disk-bios
 
 clean:
 	@# The rootless work dir is owned by subordinate UIDs: delete it in a user namespace.

@@ -8,18 +8,19 @@ set $up k
 set $right l
 set $term foot
 set $menu fuzzel
-set $lock swaylock -f -c 1a1a1a
+set $lock swaylock -f -c @bg@
 
-# Appearance: dark, one warm accent.
-output * bg #1a1a1a solid_color
-font pango:DejaVu Sans Mono 10
-default_border pixel 2
-gaps inner 4
-#                       border  bg      text    indicator child_border
-client.focused          #a4471f #a4471f #1a1a1a #a4471f   #a4471f
-client.focused_inactive #333333 #333333 #ededed #333333   #333333
-client.unfocused        #222222 #222222 #888888 #222222   #222222
-client.urgent           #c0392b #c0392b #ededed #c0392b   #c0392b
+# Appearance: Kiln Graphite (themes/graphite). Thin borders, one warm accent.
+output * bg #@bg@ solid_color
+font pango:@font_mono@ @font_size@
+default_border pixel @border@
+default_floating_border pixel @border@
+gaps inner @gap@
+#                       border     bg         text       indicator  child_border
+client.focused          #@accent@ #@accent@ #@fg@    #@accent@ #@accent@
+client.focused_inactive #@line@   #@line@   #@fg@    #@line@   #@line@
+client.unfocused        #@line@   #@bg@     #@muted@ #@line@   #@line@
+client.urgent           #@urgent@ #@urgent@ #@fg@    #@urgent@ #@urgent@
 
 # Input: see `swaymsg -t get_inputs` and man 5 sway-input.
 input type:touchpad {
@@ -37,6 +38,8 @@ bindsym $mod+d exec $menu
 bindsym $mod+q kill
 bindsym $mod+Escape exec $lock
 bindsym $mod+Shift+c reload
+bindsym Print exec sh -c 'd=$HOME/Pictures/Screenshots; mkdir -p "$d" && grim "$d/$(date +%Y-%m-%d_%H-%M-%S).png"'
+bindsym Shift+Print exec sh -c 'd=$HOME/Pictures/Screenshots; mkdir -p "$d" && grim -g "$(slurp)" "$d/$(date +%Y-%m-%d_%H-%M-%S).png"'
 bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -B 'Exit' 'swaymsg exit'
 floating_modifier $mod normal
 
@@ -109,16 +112,21 @@ bindsym XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
 
 bar {
     position top
+    height @bar_height@
+    font pango:@font_mono@ @font_size@
     # A shell loop instead of a status daemon: one `date` call every 5 seconds.
     status_command while date +'%a %d %b  %H:%M'; do sleep 5; done
+    status_padding 0
+    workspace_min_width @bar_height@
     colors {
-        background #1a1a1a
-        statusline #ededed
-        separator  #333333
-        focused_workspace  #a4471f #a4471f #1a1a1a
-        active_workspace   #333333 #333333 #ededed
-        inactive_workspace #1a1a1a #1a1a1a #888888
-        urgent_workspace   #c0392b #c0392b #ededed
+        background #@bg@
+        statusline #@fg@
+        separator  #@line@
+        #                  border     bg         text
+        focused_workspace  #@accent@ #@accent@ #@fg@
+        active_workspace   #@line@   #@line@   #@fg@
+        inactive_workspace #@bg@     #@bg@     #@muted@
+        urgent_workspace   #@urgent@ #@urgent@ #@fg@
     }
 }
 

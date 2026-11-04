@@ -1,11 +1,12 @@
 /* twmx configuration for Kiln Linux, built into the twmx package.
  * Based on twmx config.def.h at the commit pinned in PKGBUILD; differences:
- * Kiln colors, and dmenu themed to match. */
+ * Kiln Graphite colors (themes/graphite), dmenu themed to match, and keys for
+ * locking, screenshots and Super+Shift+Space floating, as in Kiln's other WMs. */
 
 /* appearance */
 static const unsigned int borderpx   = 2;          /* window border width */
 static const unsigned int gappx      = 6;          /* gap between windows and screen edges */
-static const char normbordercolor[]  = "#333333";
+static const char normbordercolor[]  = "#34322f";
 static const char selbordercolor[]   = "#a4471f";  /* kiln brick */
 
 /* behaviour */
@@ -29,7 +30,13 @@ static const Rule rules[] = {
 /* commands */
 static const char *termcmd[]     = { "xterm", NULL };
 static const char *launchercmd[] = { "dmenu_run", "-fn", "DejaVu Sans Mono:size=10",
-	"-nb", "#1a1a1a", "-nf", "#ededed", "-sb", "#a4471f", "-sf", "#ededed", NULL };
+	"-nb", "#242322", "-nf", "#ededed", "-sb", "#a4471f", "-sf", "#ededed", NULL };
+static const char *lockcmd[]     = { "i3lock", "-n", "-c", "1a1a1a", NULL };
+/* Screenshots to ~/Pictures/Screenshots; region selection with the mouse. */
+#define SHOT(FLAGS) { "/bin/sh", "-c", "d=$HOME/Pictures/Screenshots; mkdir -p \"$d\" && " \
+	"maim " FLAGS " \"$d/$(date +%Y-%m-%d_%H-%M-%S).png\"", NULL }
+static const char *shotcmd[]     = SHOT("");
+static const char *shotselcmd[]  = SHOT("-s");
 
 #define MODKEY Mod4Mask   /* Super */
 #define WSKEYS(KEY, WS) \
@@ -54,6 +61,10 @@ static const Key keys[] = {
 	{ MODKEY,           XK_m,         setlayout,        { .i = 1 } },
 	{ MODKEY|ShiftMask, XK_f,         setlayout,        { .i = 2 } },
 	{ MODKEY,           XK_space,     togglefloating,   { 0 } },
+	{ MODKEY|ShiftMask, XK_space,     togglefloating,   { 0 } },
+	{ MODKEY,           XK_Escape,    spawn,            { .v = lockcmd } },
+	{ 0,                XK_Print,     spawn,            { .v = shotcmd } },
+	{ ShiftMask,        XK_Print,     spawn,            { .v = shotselcmd } },
 	{ MODKEY,           XK_f,         togglefullscreen, { 0 } },
 	{ MODKEY,           XK_Tab,       viewprev,         { 0 } },
 	{ MODKEY,           XK_comma,     focusmon,         { .i = -1 } },

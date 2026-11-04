@@ -1,13 +1,22 @@
-# Kiln Linux dunst config (notifications in the twmx desktop). Reference: man 5 dunst
+# Kiln Linux dunst config (notifications in the twmx and i3 desktops). Reference: man 5 dunst
 [global]
-    font = DejaVu Sans 10
-    frame_width = 2
-    frame_color = "#a4471f"
-    background = "#1a1a1a"
-    foreground = "#ededed"
-    offset = (12, 12)
+    font = @font_sans@ @font_size@
+    width = 360
+    # y 28: below the 22 px bar, plus the 6 px gap; dunst ignores bar struts
+    offset = (@gap@, 28)
+    padding = 12
+    horizontal_padding = 12
+    frame_width = @border@
+    frame_color = "#@line@"
+    separator_color = frame
+    background = "#@surface@"
+    foreground = "#@fg@"
+    highlight = "#@accent@"
     corner_radius = 0
 
+[urgency_low]
+    foreground = "#@muted@"
+
 [urgency_critical]
-    frame_color = "#c0392b"
+    frame_color = "#@urgent@"
     timeout = 0

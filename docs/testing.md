@@ -98,6 +98,13 @@ partitions in the installer.
 ## Not yet tested
 
 - [ ] btrfs, a root password
+- [ ] Kiln Graphite configs for i3, sway and Hyprland (rendered by `make test`;
+      never started). twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
+      bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
+      battery modules hide on a machine without them; not yet on an installed system
+- [ ] GRUB and Limine, on UEFI and on BIOS (`make run-bios`, then
+      `make run-disk-bios`); dry-run with stubbed commands only: each writes
+      the expected loader commands, pacman hook and kernel command line
 - [ ] LUKS2 root encryption (`ENCRYPT=yes`): install, passphrase prompt at boot
 - [ ] desktops other than twmx: i3, sway, Hyprland, XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)

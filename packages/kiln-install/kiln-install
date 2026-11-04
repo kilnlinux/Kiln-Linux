@@ -7,9 +7,10 @@
 #                                 (bash syntax), then the install runs as-is
 #
 # The install itself: GPT disk (or partitions you made with cfdisk), pacstrap
-# of base + kernel, Kiln profiles applied with `kiln apply` inside the new
-# system, systemd-boot (UEFI only for now), then checks of the result. Nothing
-# reports success unless those checks pass.
+# of base + kernel, optional LUKS2 encryption of the root partition, Kiln
+# profiles applied with `kiln apply` inside the new system, a boot loader
+# (systemd-boot, GRUB or Limine; GRUB and Limine also on BIOS), then checks of
+# the result. Nothing reports success unless those checks pass.
 
 set -uo pipefail
 
@@ -17,7 +18,12 @@ readonly MNT=/mnt
 readonly SHARE=/usr/share/kiln
 readonly LOG=/tmp/kiln-install.log
 readonly BT="Kiln Linux installer"
+readonly CRYPT_NAME=kilnroot   # /dev/mapper name of the unlocked root
 readonly MIN_BYTES=$((8 * 1024 * 1024 * 1024))
+# GPT type of the BIOS boot partition, where GRUB and Limine put their BIOS stage 2.
+readonly BIOS_BOOT_TYPE=21686148-6449-6e61-6e6f-744e656564ef
+if [[ -d /sys/firmware/efi/efivars ]]; then FIRMWARE=uefi; else FIRMWARE=bios; fi
+readonly FIRMWARE
 
 # Settings. --config files set these.
 KEYMAP=us
@@ -31,10 +37,14 @@ DESKTOP=twmx      # a key of DESKTOPS below
 EXTRAS=()         # extra profiles: audio, developer
 DISK=
 SCHEME=           # auto (erase DISK) or manual (ESP and ROOT as given)
-ESP=
+ESP=              # FAT32 partition mounted at /boot; the EFI system partition on UEFI
 ROOT=
 FORMAT_ESP=yes
 FS=ext4           # root filesystem: ext4 or btrfs
+ENCRYPT=no        # yes: LUKS2 on the root partition, unlocked at boot
+LUKS_PW=          # passphrase for ENCRYPT=yes
+BOOTLOADER=systemd-boot  # systemd-boot (UEFI only), grub or limine
+[[ $FIRMWARE == uefi ]] || BOOTLOADER=grub
 
 UNATTENDED=
 
@@ -45,7 +55,7 @@ DESKTOPS=(
     "twmx|twmx: tiling, X11 (Kiln default)|twmx|-|log in on tty1 and twmx starts|startx"
     "i3|i3: tiling, X11|i3|-|log in on tty1 and i3 starts|startx"
     "sway|Sway: tiling, Wayland|sway|-|log in on tty1 and sway starts|sway"
-    "hyprland|Hyprland: tiling, Wayland, animated|hyprland|-|log in on tty1 and Hyprland starts|Hyprland"
+    "hyprland|Hyprland: tiling, Wayland|hyprland|-|log in on tty1 and Hyprland starts|start-hyprland"
     "xfce|XFCE: desktop environment, X11|xfce|lightdm|log in on the LightDM screen|-"
     "plasma|KDE Plasma: desktop environment, Wayland|plasma|sddm|log in on the SDDM screen|-"
     "gnome|GNOME: desktop environment, Wayland|gnome|gdm|log in on the GDM screen|-"
@@ -228,7 +238,7 @@ ask_disk() {
     if ! check_disk_usable; then DISK=; return; fi
 
     SCHEME=$(d --title Partitions --menu "How to partition $DISK:" 12 72 2 \
-        auto "Erase the whole disk: 1 GiB EFI partition + root" \
+        auto "Erase the whole disk: 1 GiB boot partition + root" \
         manual "Edit partitions with cfdisk, then choose them") || { DISK=; return; }
     ESP= ROOT= FORMAT_ESP=yes
     if [[ $SCHEME == manual ]]; then
@@ -237,10 +247,10 @@ ask_disk() {
         while read -r name size fstype; do
             parts+=("$name" "$size ${fstype:-}")
         done < <(lsblk -lnpo NAME,SIZE,FSTYPE,TYPE "$DISK" | awk '$NF == "part" { NF--; print }')
-        ((${#parts[@]} >= 4)) || { d --msgbox "Make at least two partitions: an EFI system partition and a root." 7 60; DISK=; return; }
-        ESP=$(d --title Partitions --menu "EFI system partition (FAT32, mounted at /boot, 512 MiB or more):" 15 64 6 "${parts[@]}") || { DISK=; return; }
+        ((${#parts[@]} >= 4)) || { d --msgbox "Make at least two partitions: a boot partition (the EFI system partition on UEFI) and a root." 8 64; DISK=; return; }
+        ESP=$(d --title Partitions --menu "Boot partition (FAT32, mounted at /boot, 512 MiB or more; on UEFI the EFI system partition):" 15 64 6 "${parts[@]}") || { DISK=; return; }
         ROOT=$(d --title Partitions --menu "Root partition (will be formatted):" 15 60 6 "${parts[@]}") || { DISK=; return; }
-        [[ $ESP != "$ROOT" ]] || { d --msgbox "The EFI and root partitions must be different." 6 56; DISK=; return; }
+        [[ $ESP != "$ROOT" ]] || { d --msgbox "The boot and root partitions must be different." 6 56; DISK=; return; }
         if d --title Partitions --defaultno --yesno \
             "Format $ESP?\n\nSay no to keep it, for example to share it with another operating system." 9 64; then
             FORMAT_ESP=yes
@@ -250,6 +260,22 @@ ask_disk() {
     fi
     FS=$(d --title Filesystem --default-item "$FS" --menu "Root filesystem:" 10 56 2 \
         ext4 "simple and robust" btrfs "checksums, compression") || FS=ext4
+    ENCRYPT=no LUKS_PW=
+    if d --title Encryption --defaultno --yesno \
+        "Encrypt the root partition (LUKS2)?\n\nYou type the passphrase at every boot. Lose it and the data is gone. The EFI partition stays unencrypted." 10 64; then
+        local p
+        p=$(ask_password Encryption "Disk encryption passphrase:") && ENCRYPT=yes LUKS_PW=$p
+    fi
+}
+
+ask_bootloader() {
+    local items=() b
+    [[ $FIRMWARE == uefi ]] && items+=(systemd-boot "small, part of systemd; UEFI only")
+    items+=(grub "GRUB: the most widely used; BIOS and UEFI")
+    items+=(limine "Limine: small and fast; BIOS and UEFI")
+    b=$(d --title "Boot loader" --default-item "$BOOTLOADER" \
+        --menu "Boot loader (this computer started in ${FIRMWARE^^} mode):" 12 66 3 "${items[@]}") || return
+    BOOTLOADER=$b
 }
 
 # --- Checks ------------------------------------------------------------------
@@ -276,15 +302,23 @@ check_disk_usable() {
 # Prints the first problem with the settings; prints nothing if ready.
 settings_problem() {
     local p
-    if [[ ! -d /sys/firmware/efi/efivars ]]; then
-        echo "This computer started in BIOS mode. kiln-install supports UEFI only for now."; return
-    fi
+    case $BOOTLOADER in
+        systemd-boot) [[ $FIRMWARE == uefi ]] || { echo "This computer started in BIOS mode; systemd-boot needs UEFI. Choose GRUB or Limine."; return; } ;;
+        grub | limine) ;;
+        *) echo "BOOTLOADER must be systemd-boot, grub or limine."; return ;;
+    esac
     [[ -n $USER_NAME && -n $USER_PW ]] || { echo "Create a user account first."; return; }
     desktop_field "$DESKTOP" 1 >/dev/null || { echo "Unknown desktop: $DESKTOP"; return; }
     for p in core "$(desktop_field "$DESKTOP" 3)" "${EXTRAS[@]}"; do
         [[ $p == - || -f $SHARE/profiles/$p.toml ]] || { echo "Missing profile $SHARE/profiles/$p.toml"; return; }
     done
     [[ $FS == ext4 || $FS == btrfs ]] || { echo "FS must be ext4 or btrfs."; return; }
+    case $ENCRYPT in
+        no) ;;
+        yes) [[ -n $LUKS_PW ]] || { echo "Set an encryption passphrase (see Disk)."; return; } ;;
+        *) echo "ENCRYPT must be yes or no."; return ;;
+    esac
+    [[ ! -e /dev/mapper/$CRYPT_NAME ]] || { echo "/dev/mapper/$CRYPT_NAME is open; close it first (cryptsetup close $CRYPT_NAME)."; return; }
     p=$(disk_problem)
     [[ -z $p ]] || { echo "$p"; return; }
     case $SCHEME in
@@ -294,8 +328,11 @@ settings_problem() {
                 [[ -b $p && $(lsblk -dnro TYPE "$p") == part && $(lsblk -dnpro PKNAME "$p") == "$DISK" ]] ||
                     { echo "Choose partitions on $DISK."; return; }
             done
-            [[ $ESP != "$ROOT" ]] || { echo "The EFI and root partitions must be different."; return; }
+            [[ $ESP != "$ROOT" ]] || { echo "The boot and root partitions must be different."; return; }
             [[ $FORMAT_ESP == yes || $FORMAT_ESP == no ]] || { echo "FORMAT_ESP must be yes or no."; return; }
+            if [[ $FIRMWARE == bios && $(lsblk -dno PTTYPE "$DISK") == gpt && -z $(bios_boot_part) ]]; then
+                echo "BIOS booting from a GPT disk needs a BIOS boot partition (1 MiB, type \"BIOS boot\" in cfdisk)."; return
+            fi
             ;;
         *) echo "Choose how to partition the disk."; return ;;
     esac
@@ -356,23 +393,41 @@ retry_downloads() {
     done
 }
 
+# Number of DISK's BIOS boot partition, if it has one.
+bios_boot_part() {
+    local name type
+    while read -r name type; do
+        if [[ ${type,,} == "$BIOS_BOOT_TYPE" ]]; then cat "/sys/class/block/${name##*/}/partition"; return; fi
+    done < <(lsblk -lnpo NAME,PARTTYPE "$DISK")
+}
+
 partition_and_mount() {
     if [[ $SCHEME == auto ]]; then
         run wipefs -a "$DISK"
-        # GPT: 1 GiB EFI System Partition (U), then Linux filesystem (L).
-        printf 'label: gpt\n,1GiB,U\n,,L\n' | run sfdisk --wipe always --wipe-partitions always "$DISK"
+        # GPT: a 1 GiB EFI System Partition (U) for /boot, then Linux filesystem (L).
+        # On BIOS, first a 1 MiB BIOS boot partition for the boot loader's stage 2.
+        local layout=',1GiB,U\n,,L\n' first=1
+        if [[ $FIRMWARE == bios ]]; then layout=",1MiB,$BIOS_BOOT_TYPE\n$layout" first=2; fi
+        printf "label: gpt\n$layout" | run sfdisk --wipe always --wipe-partitions always "$DISK"
         udevadm settle
-        ESP=$(part "$DISK" 1) ROOT=$(part "$DISK" 2)
+        ESP=$(part "$DISK" "$first") ROOT=$(part "$DISK" $((first + 1)))
         FORMAT_ESP=yes
         [[ -b $ESP && -b $ROOT ]] || { echo "partitions did not appear on $DISK"; return 1; }
     fi
     if [[ $FORMAT_ESP == yes ]]; then run mkfs.fat -F 32 -n KILN_ESP "$ESP"; fi
+    local dev=$ROOT
+    if [[ $ENCRYPT == yes ]]; then
+        # Passphrase via stdin, never on a command line; no trailing newline, so it matches what is typed at boot.
+        printf '%s' "$LUKS_PW" | run cryptsetup luksFormat --type luks2 --batch-mode --key-file - "$ROOT"
+        printf '%s' "$LUKS_PW" | run cryptsetup open --key-file - "$ROOT" "$CRYPT_NAME"
+        dev=/dev/mapper/$CRYPT_NAME
+    fi
     case $FS in
-        ext4) run mkfs.ext4 -F -L kiln "$ROOT" ;;
-        btrfs) run mkfs.btrfs -f -L kiln "$ROOT" ;;
+        ext4) run mkfs.ext4 -F -L kiln "$dev" ;;
+        btrfs) run mkfs.btrfs -f -L kiln "$dev" ;;
     esac
     # -t: no probing, which makes the kernel log "couldn't mount as ext2/ext3".
-    run mount -t "$FS" "$ROOT" "$MNT"
+    run mount -t "$FS" "$dev" "$MNT"
     # umask 0077: the ESP holds the boot loader random seed; keep it root-only.
     run mount --mkdir -t vfat -o fmask=0077,dmask=0077 "$ESP" "$MNT/boot"
 }
@@ -385,6 +440,11 @@ install_base() {
         ext4) pkgs+=(e2fsprogs) ;;
         btrfs) pkgs+=(btrfs-progs) ;;
     esac
+    case $BOOTLOADER in
+        grub) pkgs+=(grub) ;;
+        limine) pkgs+=(limine) ;;
+    esac
+    if [[ $BOOTLOADER != systemd-boot && $FIRMWARE == uefi ]]; then pkgs+=(efibootmgr); fi
     # CPU microcode; mkinitcpio's default "microcode" hook puts it in the initramfs.
     if grep -q GenuineIntel /proc/cpuinfo; then pkgs+=(intel-ucode); fi
     if grep -q AuthenticAMD /proc/cpuinfo; then pkgs+=(amd-ucode); fi
@@ -443,7 +503,7 @@ apply_profiles() {
     dm=$(desktop_field "$DESKTOP" 4)
     if [[ $dm != - ]]; then run arch-chroot "$MNT" systemctl enable "$dm.service"; fi
     # ~/.xinitrc starts twmx; point it at the chosen X11 window manager.
-    if [[ $DESKTOP == i3 ]]; then sed -i 's/^exec twmx$/exec i3/' "$MNT/etc/skel/.xinitrc"; fi
+    if [[ $DESKTOP == i3 ]]; then sed -i 's/^wm=twmx$/wm=i3/' "$MNT/etc/skel/.xinitrc"; fi
     # Window managers have no login screen: start the desktop on a tty1 login.
     local start
     start=$(desktop_field "$DESKTOP" 6)
@@ -472,12 +532,98 @@ create_user() {
     run arch-chroot "$MNT" visudo -cf /etc/sudoers.d/10-wheel
 }
 
+# The file holding the kernel command line of the chosen boot loader.
+bootcfg() {
+    case $BOOTLOADER in
+        systemd-boot) echo "$MNT/boot/loader/entries/kiln.conf" ;;
+        grub) echo "$MNT/boot/grub/grub.cfg" ;;
+        limine) echo "$MNT/boot/limine.conf" ;;
+    esac
+}
+
+# boot_hook PACKAGE COMMAND: a pacman hook in the new system that runs COMMAND
+# after upgrades of PACKAGE, so the boot loader on the disk matches the package.
+boot_hook() {
+    install -Dm644 /dev/stdin "$MNT/etc/pacman.d/hooks/kiln-$1.hook" <<HOOK
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = $1
+
+[Action]
+Description = Updating $1 on the boot disk...
+When = PostTransaction
+Exec = /bin/sh -c '$2'
+HOOK
+}
+
 install_bootloader() {
-    local uuid
+    local uuid luks= options
     uuid=$(findmnt -no UUID "$MNT")
     [[ -n $uuid ]] || { echo "cannot determine the root filesystem UUID"; return 1; }
+    if [[ $ENCRYPT == yes ]]; then
+        # Arch's default initramfs is systemd-based; sd-encrypt reads rd.luks.name and asks for the passphrase.
+        grep -Eq '^HOOKS=.*\bsystemd\b' "$MNT/etc/mkinitcpio.conf" || { echo "mkinitcpio HOOKS are not systemd-based; cannot add sd-encrypt"; return 1; }
+        sed -i '/^HOOKS=/s/\bfilesystems\b/sd-encrypt filesystems/' "$MNT/etc/mkinitcpio.conf"
+        luks="rd.luks.name=$(cryptsetup luksUUID "$ROOT")=$CRYPT_NAME"
+    fi
+    options="${luks:+$luks }root=UUID=$uuid rw"
     # Regenerate the initramfs now that vconsole.conf exists (sd-vconsole hook).
     run arch-chroot "$MNT" mkinitcpio -P
+    case $BOOTLOADER in
+        systemd-boot) install_systemd_boot "$options" ;;
+        grub) install_grub "$luks" ;;
+        limine) install_limine "$options" ;;
+    esac
+}
+
+# Hooks find the disk under /boot again at upgrade time: device names can change between boots.
+readonly HOOK_BOOTDISK='d=$(lsblk -npo PKNAME "$(findmnt -no SOURCE /boot)")'
+
+install_grub() {
+    # GRUB adds root= itself; it only needs the LUKS option.
+    sed -i -e "s|^GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX=\"$1\"|" -e 's|^GRUB_TIMEOUT=.*|GRUB_TIMEOUT=3|' \
+        -e 's|^GRUB_DISTRIBUTOR=.*|GRUB_DISTRIBUTOR="Kiln"|' "$MNT/etc/default/grub"
+    if [[ $FIRMWARE == uefi ]]; then
+        local efi='grub-install --target=x86_64-efi --efi-directory=/boot'
+        run arch-chroot "$MNT" $efi --bootloader-id=Kiln
+        # Also the fallback path EFI/BOOT/BOOTX64.EFI, for firmware that forgets boot entries.
+        run arch-chroot "$MNT" $efi --removable
+        boot_hook grub "$efi --bootloader-id=Kiln && $efi --removable"
+    else
+        run arch-chroot "$MNT" grub-install --target=i386-pc "$DISK"
+        boot_hook grub "$HOOK_BOOTDISK"' && grub-install --target=i386-pc "$d"'
+    fi
+    run arch-chroot "$MNT" grub-mkconfig -o /boot/grub/grub.cfg
+}
+
+install_limine() {
+    cat >"$MNT/boot/limine.conf" <<CONF
+timeout: 3
+
+/Kiln Linux
+    protocol: linux
+    path: boot():/vmlinuz-linux
+    module_path: boot():/initramfs-linux.img
+    cmdline: $1
+CONF
+    local src=/usr/share/limine n
+    if [[ $FIRMWARE == uefi ]]; then
+        install -Dm644 "$MNT$src/BOOTX64.EFI" "$MNT/boot/EFI/limine/BOOTX64.EFI"
+        install -Dm644 "$MNT$src/BOOTX64.EFI" "$MNT/boot/EFI/BOOT/BOOTX64.EFI"
+        n=$(cat "/sys/class/block/${ESP##*/}/partition")
+        run arch-chroot "$MNT" efibootmgr --create --disk "$DISK" --part "$n" --label "Kiln Linux" --loader '\EFI\limine\BOOTX64.EFI'
+        boot_hook limine "cp $src/BOOTX64.EFI /boot/EFI/limine/ && cp $src/BOOTX64.EFI /boot/EFI/BOOT/"
+    else
+        install -m644 "$MNT$src/limine-bios.sys" "$MNT/boot/limine-bios.sys"
+        n=$(bios_boot_part)   # empty on MBR disks
+        run arch-chroot "$MNT" limine bios-install "$DISK" ${n:+"$n"}
+        boot_hook limine "$HOOK_BOOTDISK && cp $src/limine-bios.sys /boot/ && limine bios-install \"\$d\"${n:+ $n}"
+    fi
+}
+
+install_systemd_boot() {
+    local options=$1
     run arch-chroot "$MNT" bootctl install --esp-path=/boot
     printf 'default kiln.conf\ntimeout 3\neditor no\n' >"$MNT/boot/loader/loader.conf"
     # One entry: Arch's linux preset no longer builds a fallback initramfs.
@@ -485,7 +631,7 @@ install_bootloader() {
 title   Kiln Linux
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
-options root=UUID=$uuid rw
+options $options
 EOF
     # Updates systemd-boot on the ESP after systemd package upgrades.
     run arch-chroot "$MNT" systemctl enable systemd-boot-update.service
@@ -500,14 +646,25 @@ validate() {
     }
     check "/boot/vmlinuz-linux exists" test -s "$MNT/boot/vmlinuz-linux"
     check "/boot/initramfs-linux.img exists" test -s "$MNT/boot/initramfs-linux.img"
-    check "systemd-boot installed" arch-chroot "$MNT" bootctl --esp-path=/boot is-installed
-    check "fallback loader EFI/BOOT/BOOTX64.EFI" test -s "$MNT/boot/EFI/BOOT/BOOTX64.EFI"
-    check "boot entry points at root UUID" grep -q "root=UUID=$uuid" "$MNT/boot/loader/entries/kiln.conf"
+    case $BOOTLOADER in
+        systemd-boot) check "systemd-boot installed" arch-chroot "$MNT" bootctl --esp-path=/boot is-installed ;;
+        grub) [[ $FIRMWARE == uefi ]] || check "GRUB BIOS core image" test -s "$MNT/boot/grub/i386-pc/core.img" ;;
+        limine) [[ $FIRMWARE == uefi ]] || check "Limine BIOS stage /boot/limine-bios.sys" test -s "$MNT/boot/limine-bios.sys" ;;
+    esac
+    if [[ $FIRMWARE == uefi ]]; then
+        check "fallback loader EFI/BOOT/BOOTX64.EFI" test -s "$MNT/boot/EFI/BOOT/BOOTX64.EFI"
+    fi
+    # grub-mkconfig may name the unlocked root by its /dev/mapper path instead of the UUID.
+    check "boot entry points at root" grep -Eq "root=(UUID=$uuid|/dev/mapper/$CRYPT_NAME)( |\$)" "$(bootcfg)"
     check "fstab mounts root by UUID" grep -Eq "^UUID=$uuid[[:space:]]+/[[:space:]]" "$MNT/etc/fstab"
     check "fstab mounts /boot" grep -Eq '^[^#][^[:space:]]*[[:space:]]+/boot[[:space:]]' "$MNT/etc/fstab"
     check "user $USER_NAME exists" arch-chroot "$MNT" id -u "$USER_NAME"
     check "os-release says Kiln Linux" grep -q '^ID=kiln' "$MNT/usr/lib/os-release"
     check "kiln doctor passes" arch-chroot "$MNT" kiln doctor
+    if [[ $ENCRYPT == yes ]]; then
+        check "initramfs hooks include sd-encrypt" grep -Eq '^HOOKS=.*\bsd-encrypt\b' "$MNT/etc/mkinitcpio.conf"
+        check "boot entry unlocks the LUKS root" grep -q "rd.luks.name=$(cryptsetup luksUUID "$ROOT")=$CRYPT_NAME" "$(bootcfg)"
+    fi
     ((ok))
 }
 
@@ -524,6 +681,7 @@ install_all() {
     echo "== Checking the installed system"; validate
     sync
     run umount -R "$MNT"
+    if [[ $ENCRYPT == yes ]]; then run cryptsetup close "$CRYPT_NAME"; fi
 }
 
 # Run install_all, logging everything. Returns its status.
@@ -552,22 +710,22 @@ summary() {
     if [[ $SCHEME == auto ]]; then
         printf 'Disk:        ERASE all of %s\n' "$DISK"
     else
-        printf 'Disk:        %s (root, formatted), %s (EFI%s)\n' "$ROOT" "$ESP" "$([[ $FORMAT_ESP == yes ]] && echo ", formatted")"
+        printf 'Disk:        %s (root, formatted), %s (/boot%s)\n' "$ROOT" "$ESP" "$([[ $FORMAT_ESP == yes ]] && echo ", formatted")"
     fi
-    printf 'Filesystem:  %s\n' "$FS"
+    printf 'Filesystem:  %s%s\n' "$FS" "$([[ $ENCRYPT == yes ]] && echo ", encrypted (LUKS2)")"
     printf 'Desktop:     %s\n' "$(desktop_field "$DESKTOP" 2)"
     printf 'Profiles:    core %s %s\n' "$(desktop_field "$DESKTOP" 3 | sed 's/^-$//')" "${EXTRAS[*]}"
     printf 'User:        %s (sudo); root %s\n' "$USER_NAME" "$([[ -n $ROOT_PW ]] && echo "password set" || echo locked)"
     printf 'Hostname:    %s\n' "$HOSTNAME_NEW"
     printf 'Keyboard:    %s; locale %s; time zone %s\n' "$KEYMAP" "$LOCALE" "$TIMEZONE"
-    printf 'Boot loader: systemd-boot (UEFI)\n'
+    printf 'Boot loader: %s (%s)\n' "$BOOTLOADER" "${FIRMWARE^^}"
     printf '\nAfter installing: reboot, then %s.\n' "$(desktop_field "$DESKTOP" 5)"
 }
 
 # --- Main --------------------------------------------------------------------
 
 ((EUID == 0)) || { echo "kiln-install: run as root" >&2; exit 1; }
-for c in dialog pacstrap genfstab arch-chroot sfdisk cfdisk wipefs mkfs.fat mkfs.ext4 mkfs.btrfs lsblk findmnt kiln; do
+for c in dialog pacstrap genfstab arch-chroot sfdisk cfdisk wipefs cryptsetup mkfs.fat mkfs.ext4 mkfs.btrfs lsblk findmnt kiln; do
     command -v "$c" >/dev/null || { echo "kiln-install: missing command: $c" >&2; exit 1; }
 done
 [[ -d $SHARE/profiles && -f $SHARE/repo/kiln.db ]] || { echo "kiln-install: missing $SHARE/profiles or $SHARE/repo" >&2; exit 1; }
@@ -601,6 +759,7 @@ while true; do
     disk_desc="(not set)"
     [[ -n $DISK && $SCHEME == auto ]] && disk_desc="erase $DISK, $FS"
     [[ -n $DISK && $SCHEME == manual ]] && disk_desc="$ROOT + $ESP, $FS"
+    [[ -n $DISK && $ENCRYPT == yes ]] && disk_desc+=", encrypted"
     net=$(online && echo connected || echo "not connected")
     choice=$(d --title "Kiln Linux" --cancel-label Exit --default-item "$next" \
         --menu "Set each item, then choose Install." 21 70 13 \
@@ -614,7 +773,7 @@ while true; do
         desktop    "Desktop       $(desktop_field "$DESKTOP" 2)" \
         extras     "Extras        $(shown "${EXTRAS[*]}")" \
         disk       "Disk          $disk_desc" \
-        bootloader "Boot loader   systemd-boot (UEFI)" \
+        bootloader "Boot loader   $BOOTLOADER (${FIRMWARE^^})" \
         install    "Install") || { clear; exit 0; }
     case $choice in
         keyboard) ask_keymap; next=network ;;
@@ -627,10 +786,7 @@ while true; do
         desktop) ask_desktop; next=extras ;;
         extras) ask_extras; next=disk ;;
         disk) ask_disk; next=install ;;
-        bootloader)
-            d --title "Boot loader" --msgbox "systemd-boot, on the EFI system partition mounted at /boot.\n\nBIOS (legacy) installs are not supported yet." 9 60
-            next=install
-            ;;
+        bootloader) ask_bootloader; next=install ;;
         install)
             problem=$(settings_problem)
             if [[ -n $problem ]]; then
@@ -654,7 +810,7 @@ while true; do
                 clear
                 exit 0
             fi
-            d --title "Installation FAILED" --msgbox "Kiln Linux is NOT installed.\n\nLog: $LOG\n\nThe full log follows; use the arrow keys to scroll through the download errors.\n\nFilesystems may be left mounted under $MNT; unmount with umount -R $MNT before retrying." 22 78
+            d --title "Installation FAILED" --msgbox "Kiln Linux is NOT installed.\n\nLog: $LOG\n\nThe full log follows; use the arrow keys to scroll through the download errors.\n\nFilesystems may be left mounted under $MNT; unmount with umount -R $MNT (and cryptsetup close $CRYPT_NAME if encrypted) before retrying." 22 78
             d --title "Full installation log (scroll to see download errors)" --textbox "$LOG" 22 78
             next=install
             ;;

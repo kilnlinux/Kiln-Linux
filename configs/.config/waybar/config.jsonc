@@ -1,0 +1,14 @@
+// Kiln Linux waybar config (the Hyprland bar). Reference: man 5 waybar
+{
+    "layer": "top",
+    "position": "top",
+    "height": @bar_height@,
+    "spacing": 16,
+    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-right": ["wireplumber", "network", "battery", "clock"],
+    "hyprland/window": { "max-length": 80 },
+    "wireplumber": { "format": "vol {volume}%", "format-muted": "vol muted" },
+    "network": { "format-wifi": "{essid}", "format-ethernet": "", "format-disconnected": "" },
+    "battery": { "format": "bat {capacity}%", "format-charging": "bat {capacity}%+" },
+    "clock": { "format": "{:%a %d %b  %H:%M}", "interval": 5 }
+}

@@ -12,5 +12,7 @@ official = [
     "foot",         # terminal
     "fuzzel",       # launcher
     "mako",         # notifications
+    "grim",         # screenshots (Print)
+    "slurp",        # region selection for Shift+Print
     "ttf-dejavu",   # a font for foot, fuzzel and the bar
 ]

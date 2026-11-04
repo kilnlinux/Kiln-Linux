@@ -10,6 +10,7 @@ bad() { printf '\033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 t() { local name=$1; shift; if "$@" >/tmp/kiln-test.$$ 2>&1; then ok "$name"; else bad "$name"; sed 's/^/     /' /tmp/kiln-test.$$; fi; }
 
 t "installer: failure handling" python3 tests/installer.py
+t "theme: graphite fills every @name@ in configs" tests/theme.sh
 t "twmx: user updater" python3 tests/twmx-update.py
 
 t "kiln: cargo test (unit + integration)" cargo test --quiet --manifest-path packages/kiln/Cargo.toml

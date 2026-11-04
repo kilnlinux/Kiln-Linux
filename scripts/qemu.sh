@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Boot Kiln Linux in QEMU.
 #   scripts/qemu.sh iso        newest ISO in out/, UEFI, with a blank 20 GiB disk attached
-#   scripts/qemu.sh iso-bios   same, legacy BIOS (live only; the installer is UEFI-only)
+#   scripts/qemu.sh iso-bios   same, legacy BIOS (install with GRUB or Limine)
 #   scripts/qemu.sh disk       boot the installed disk, UEFI
+#   scripts/qemu.sh disk-bios  boot the installed disk, legacy BIOS
 # Needs: qemu-system-x86_64 (qemu-desktop or qemu-base), edk2-ovmf.
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
@@ -45,6 +46,7 @@ case ${1:-iso} in
     iso) uefi; iso ;;
     iso-bios) iso ;;
     disk) uefi ;;
-    *) die "usage: $0 iso|iso-bios|disk" ;;
+    disk-bios) ;;
+    *) die "usage: $0 iso|iso-bios|disk|disk-bios" ;;
 esac
 exec qemu-system-x86_64 "${args[@]}"

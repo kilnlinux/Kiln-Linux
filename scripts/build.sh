@@ -66,6 +66,8 @@ install -m644 profiles/*.toml "$A/usr/share/kiln/profiles/"
 # Home directory skeleton; the installer copies it to the new system's /etc/skel.
 mkdir -p "$A/usr/share/kiln/skel"
 cp -rT configs "$A/usr/share/kiln/skel"
+# Configs use @name@ for theme values; fill them in from the default theme.
+scripts/render-theme.sh themes/graphite "$A/usr/share/kiln/skel"
 # The [kiln] repo; the installer copies it to the new system and adds it to pacman.conf.
 # repo-add makes kiln.db/kiln.files symlinks; -L stores real files.
 cp -rL "$REPO" "$A/usr/share/kiln/repo"

@@ -1,0 +1,40 @@
+# Kiln Linux i3status config (the i3 bar). Reference: man i3status
+# Modules missing on this machine (no battery, no Wi-Fi) show nothing.
+
+general {
+    colors = true
+    color_good = "#@fg@"
+    color_degraded = "#@muted@"
+    color_bad = "#@urgent@"
+    interval = 5
+    separator = ""
+}
+
+order += "volume master"
+order += "wireless _first_"
+order += "battery all"
+order += "tztime local"
+
+volume master {
+    format = "vol %volume"
+    format_muted = "vol muted"
+}
+
+wireless _first_ {
+    format_up = "%essid"
+    format_down = ""
+}
+
+battery all {
+    format = "bat %percentage%status"
+    format_down = ""
+    status_chr = "+"
+    status_bat = ""
+    status_full = ""
+    integer_battery_capacity = true
+    last_full_capacity = true
+}
+
+tztime local {
+    format = "%a %d %b  %H:%M "
+}

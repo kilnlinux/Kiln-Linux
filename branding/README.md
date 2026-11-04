@@ -9,11 +9,13 @@ Shared with kilnlinux.org and the original Kiln Linux project.
 - Accent: kiln brick `#a4471f` (truecolor ANSI `38;2;164;71;31`, also
   `ANSI_COLOR` in os-release). Background `#1a1a1a`, text `#ededed`.
 - The Linux text console has 16 colors; there the brick shows as red.
+- Desktops: `themes/graphite` holds the full palette, fonts and spacing that
+  `configs/` is built from (see docs/architecture.md, "Theme").
 
 Derived from the mark; update them when it changes:
 
-- `archiso/kiln/airootfs/usr/share/kiln/logo`: the mark in ASCII, from the
-  original Kiln Linux, used by fastfetch (`/etc/xdg/fastfetch/config.jsonc`).
+- `archiso/kiln/airootfs/usr/share/kiln/logo`: the mark in ASCII, rasterized
+  from `mark-triangle.svg` (22 rows, 46 columns), used by fastfetch (`/etc/xdg/fastfetch/config.jsonc`).
 - `splash.svg` to `archiso/kiln/syslinux/splash.png` (BIOS boot menu):
   `rsvg-convert branding/splash.svg -o archiso/kiln/syslinux/splash.png`
 - Terminal output: `::` headings in the accent, everything else plain.
