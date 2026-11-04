@@ -167,8 +167,39 @@ pub fn install(pkgs: &[String], yes: bool) -> Result<bool> {
     transaction(&["-S", "--needed"], pkgs, yes)
 }
 
-/// Remove packages plus dependencies that nothing else needs (`-Rs`).
+/// Remove only the requested packages (`-R`), keeping dependencies installed.
 /// pacman refuses, and changes nothing, if another package still requires one.
 pub fn remove(pkgs: &[String], yes: bool) -> Result<bool> {
-    transaction(&["-Rs"], pkgs, yes)
+    // Preserve dependencies that may satisfy another active profile.
+    transaction(&["-R"], pkgs, yes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn purge_does_not_recursively_remove_dependencies() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("kiln-remove-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join("pacman");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\n[ \"$*\" = '-R --noconfirm -- parent' ]\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old = std::env::var_os("PATH");
+        unsafe { std::env::set_var("PATH", &dir) };
+        let result = remove(&["parent".into()], true);
+        unsafe {
+            match old {
+                Some(path) => std::env::set_var("PATH", path),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(result.unwrap());
+    }
 }

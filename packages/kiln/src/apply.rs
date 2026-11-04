@@ -11,10 +11,11 @@ use crate::manifest::{self, Manifest};
 use crate::plan;
 use crate::state::State;
 use crate::{pacman, ui};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 pub fn apply(arg: &str, dry_run: bool, yes: bool) -> Result<()> {
     let path = manifest::resolve(arg)?;
+    let path = std::fs::canonicalize(&path).map_err(crate::error::io_err("resolving", &path))?;
     let m = Manifest::load(&path)?;
     let name = &m.profile.name;
     let wanted = &m.packages.official;
@@ -27,7 +28,8 @@ pub fn apply(arg: &str, dry_run: bool, yes: bool) -> Result<()> {
         pacman::available()?
     };
     let p = plan::apply_plan(wanted, &unsatisfied, &available);
-    let active = State::load()?.profiles.contains_key(name);
+    let initial_state = State::load()?;
+    let active = initial_state.profiles.get(name);
 
     ui::heading(&format!(
         "profile {} ({})",
@@ -48,7 +50,7 @@ pub fn apply(arg: &str, dry_run: bool, yes: bool) -> Result<()> {
         );
     }
     if p.install.is_empty() {
-        if active {
+        if active.is_some_and(|p| p.manifest.as_ref() == Some(&path) || !pacman::is_root()) {
             println!("{}", ui::good("   satisfied, nothing to do"));
             return Ok(());
         }
@@ -80,12 +82,9 @@ pub fn apply(arg: &str, dry_run: bool, yes: bool) -> Result<()> {
     // Reload: another kiln may have saved while pacman ran.
     // shortcut: no lock around state, so two kiln runs saving at the same instant can lose one update; add flock() if that ever matters.
     let mut state = State::load()?;
-    state
-        .profiles
-        .entry(name.clone())
-        .or_default()
-        .managed
-        .extend(newly);
+    let profile = state.profiles.entry(name.clone()).or_default();
+    profile.manifest = Some(path);
+    profile.managed.extend(newly);
     state.save()?;
     println!(
         "{}",
@@ -121,21 +120,21 @@ pub fn remove(arg: &str, purge: bool, dry_run: bool, yes: bool) -> Result<()> {
             return Ok(());
         }
         pacman::require_root("kiln remove")?;
-        return deactivate(&name);
+        return deactivate(&name, &BTreeMap::new());
     }
 
     // Everything the other active profiles want right now. If one of their
     // manifests can't be read we can't prove a package is unneeded: stop.
     let mut other_wanted = HashSet::new();
-    for other in state.profiles.keys().filter(|n| **n != name) {
-        let m = manifest::resolve(other)
-            .and_then(|p| Manifest::load(&p))
-            .map_err(|e| {
-                crate::error::Error::Failed(format!(
-                    "cannot read active profile {other:?}, so cannot tell what it needs: {e}"
-                ))
-            })?;
-        other_wanted.extend(m.packages.official);
+    let mut other_profiles = BTreeMap::new();
+    for (other, profile) in state.profiles.iter().filter(|(n, _)| **n != name) {
+        let m = profile.load_manifest(other).map_err(|e| {
+            crate::error::Error::Failed(format!(
+                "cannot read active profile {other:?}, so cannot tell what it needs: {e}"
+            ))
+        })?;
+        other_wanted.extend(m.packages.official.iter().cloned());
+        other_profiles.insert(other.clone(), m.packages.official);
     }
     let p = plan::remove_plan(&name, &state, &other_wanted, &pacman::installed()?);
 
@@ -153,10 +152,7 @@ pub fn remove(arg: &str, purge: bool, dry_run: bool, yes: bool) -> Result<()> {
     if p.remove.is_empty() {
         println!("   nothing to uninstall");
     } else {
-        println!(
-            "   to uninstall, with dependencies nothing else needs ({}):",
-            p.remove.len()
-        );
+        println!("   to uninstall ({}):", p.remove.len());
         ui::list(&p.remove);
     }
     if dry_run {
@@ -167,12 +163,12 @@ pub fn remove(arg: &str, purge: bool, dry_run: bool, yes: bool) -> Result<()> {
     if !p.remove.is_empty() && !pacman::remove(&p.remove, yes)? {
         return crate::fail!("pacman did not complete; profile {name} is still active");
     }
-    deactivate(&name)
+    deactivate(&name, &other_profiles)
 }
 
-fn deactivate(name: &str) -> Result<()> {
+fn deactivate(name: &str, other_wanted: &BTreeMap<String, Vec<String>>) -> Result<()> {
     let mut state = State::load()?;
-    state.profiles.remove(name);
+    state.deactivate(name, other_wanted);
     state.save()?;
     println!("{}", ui::good(&format!("   profile {name} is inactive")));
     Ok(())

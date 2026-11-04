@@ -6,6 +6,7 @@
 //! Stored as TOML at /var/lib/kiln/state.toml (override: KILN_STATE_FILE).
 
 use crate::error::{Error, Result, io_err};
+use crate::manifest::{self, Manifest};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -19,9 +20,28 @@ pub struct State {
 
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct ProfileState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<PathBuf>,
     /// Packages Kiln installed because this profile asked for them.
     #[serde(default)]
     pub managed: BTreeSet<String>,
+}
+
+impl ProfileState {
+    pub fn load_manifest(&self, name: &str) -> Result<Manifest> {
+        let path = match &self.manifest {
+            Some(path) => path.clone(),
+            None => manifest::resolve(name)?,
+        };
+        let m = Manifest::load(&path)?;
+        if m.profile.name != name {
+            return crate::fail!(
+                "active profile {name:?} has been replaced by {:?}",
+                m.profile.name
+            );
+        }
+        Ok(m)
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -31,6 +51,22 @@ pub fn path() -> PathBuf {
 }
 
 impl State {
+    pub fn deactivate(&mut self, name: &str, other_wanted: &BTreeMap<String, Vec<String>>) {
+        if let Some(removed) = self.profiles.remove(name) {
+            for (other, wanted) in other_wanted {
+                if let Some(profile) = self.profiles.get_mut(other) {
+                    profile.managed.extend(
+                        removed
+                            .managed
+                            .iter()
+                            .filter(|p| wanted.contains(p))
+                            .cloned(),
+                    );
+                }
+            }
+        }
+    }
+
     /// Missing file means a fresh system with nothing active.
     pub fn load() -> Result<State> {
         let p = path();
@@ -68,6 +104,49 @@ impl State {
 mod tests {
     use super::*;
 
+    #[test]
+    fn shared_ownership_survives_until_the_last_profile_is_removed() {
+        use std::collections::HashSet;
+        let mut state = State::default();
+        state
+            .profiles
+            .entry("a".into())
+            .or_default()
+            .managed
+            .insert("shared".into());
+        state.profiles.entry("b".into()).or_default();
+        state.profiles.entry("c".into()).or_default();
+        let wanted = BTreeMap::from([
+            ("b".into(), vec!["shared".into(), "manual".into()]),
+            ("c".into(), vec!["shared".into()]),
+        ]);
+        state.deactivate("a", &wanted);
+        assert!(!state.profiles.contains_key("a"));
+        assert_eq!(
+            state.profiles["b"].managed,
+            BTreeSet::from(["shared".into()])
+        );
+        assert_eq!(
+            state.profiles["c"].managed,
+            BTreeSet::from(["shared".into()])
+        );
+        state.deactivate("b", &BTreeMap::from([("c".into(), vec!["shared".into()])]));
+        let plan = crate::plan::remove_plan(
+            "c",
+            &state,
+            &HashSet::new(),
+            &HashSet::from(["shared".into(), "manual".into()]),
+        );
+        assert_eq!(plan.remove, ["shared"]);
+    }
+
+    #[test]
+    fn old_state_files_need_no_migration() {
+        let state: State = toml::from_str("[profiles.dev]\nmanaged = ['git']\n").unwrap();
+        assert!(state.profiles["dev"].manifest.is_none());
+        assert!(state.profiles["dev"].managed.contains("git"));
+    }
+
     // Single test touching the env var, so parallel tests cannot race on it.
     #[test]
     fn round_trip_and_missing_file() {
@@ -83,6 +162,7 @@ mod tests {
             .or_default()
             .managed
             .insert("git".into());
+        s.profiles.get_mut("dev").unwrap().manifest = Some(dir.join("custom/dev.toml"));
         s.save().unwrap();
         assert_eq!(State::load().unwrap(), s);
 

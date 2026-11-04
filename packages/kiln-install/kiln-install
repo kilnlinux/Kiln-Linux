@@ -537,7 +537,9 @@ if [[ ${1-} == --config ]]; then
     problem=$(settings_problem)
     [[ -z $problem ]] || die "$problem"
     summary
-    if do_install; then
+    # Keep do_install outside a conditional so install_all retains errexit.
+    do_install
+    if (($? == 0)); then
         echo "Kiln Linux is installed on $DISK."
         exit 0
     fi
@@ -594,7 +596,9 @@ while true; do
                 typed=$(d --title "Erase $DISK" --inputbox "Everything on $DISK will be erased.\n\nType $DISK to confirm:" 10 60) || continue
                 [[ $typed == "$DISK" ]] || { d --msgbox "Not confirmed; nothing was changed." 6 44; continue; }
             fi
-            if do_install; then
+            # Keep do_install outside a conditional so install_all retains errexit.
+            do_install
+            if (($? == 0)); then
                 if d --title Done --yes-label Reboot --no-label Exit --yesno \
                     "Kiln Linux is installed.\n\n$(summary | tail -n1)\n\nRemove the install medium, then reboot." 11 66; then
                     clear

@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/fastfetch.png" alt="fastfetch on a fresh Kiln Linux install: Kiln logo, 279 packages, 290 MiB of memory in use" width="640">
+  <img src="docs/images/fastfetch-v2.png" alt="fastfetch on a fresh Kiln Linux install: Kiln logo, 279 packages, 290 MiB of memory in use" width="640">
 </p>
 
 Kiln Linux is Arch underneath. You keep pacman, the official repositories and

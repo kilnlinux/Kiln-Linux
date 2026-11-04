@@ -227,3 +227,53 @@ fn shipped_profiles_plan_cleanly() {
         );
     }
 }
+
+#[test]
+fn custom_profile_paths_work_for_purge_and_doctor() {
+    let e = Env::new("custom-path");
+    e.profile("a", &["parent"]);
+    let custom = e.dir.join("custom");
+    std::fs::create_dir_all(&custom).unwrap();
+    let path = custom.join("b.toml");
+    std::fs::write(
+        &path,
+        "[profile]\nname='b'\n[packages]\nofficial=['shared']\n",
+    )
+    .unwrap();
+    e.state(&format!(
+        "[profiles.a]\nmanaged=['parent', 'shared']\n[profiles.b]\nmanaged=[]\nmanifest={:?}\n",
+        path.to_str().unwrap()
+    ));
+    let o = e.kiln(
+        &["remove", "a", "--purge", "--dry-run"],
+        "parent shared",
+        "",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("kept, another active profile needs them (1)"));
+    let o = e.kiln(&["doctor"], "parent shared", "");
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("active profile b is satisfied"));
+
+    std::fs::write(
+        &path,
+        "[profile]\nname='b'\n[packages]\nofficial=['manual']\n",
+    )
+    .unwrap();
+    let o = e.kiln(
+        &["remove", "a", "--purge", "--dry-run"],
+        "parent shared manual",
+        "",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!stdout(&o).contains("kept, another active profile"));
+
+    std::fs::remove_file(&path).unwrap();
+    let o = e.kiln(
+        &["remove", "a", "--purge", "--dry-run"],
+        "parent shared",
+        "",
+    );
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("cannot read active profile"));
+}

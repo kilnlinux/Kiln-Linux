@@ -216,7 +216,7 @@ pub fn doctor() -> Result<()> {
 
     let installed = pacman::installed().unwrap_or_default();
     for (name, ps) in &state.profiles {
-        match manifest::resolve(name).and_then(|p| Manifest::load(&p)) {
+        match ps.load_manifest(name) {
             Err(e) => report(Some(false), &format!("active profile {name}: {e}")),
             Ok(m) => match pacman::unsatisfied(&m.packages.official) {
                 Ok(miss) if miss.is_empty() => {

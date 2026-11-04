@@ -9,6 +9,8 @@ ok() { printf '\033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '\033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 t() { local name=$1; shift; if "$@" >/tmp/kiln-test.$$ 2>&1; then ok "$name"; else bad "$name"; sed 's/^/     /' /tmp/kiln-test.$$; fi; }
 
+t "installer: failure handling" python3 tests/installer.py
+
 t "kiln: cargo test (unit + integration)" cargo test --quiet --manifest-path packages/kiln/Cargo.toml
 t "kiln: cargo clippy, no warnings" cargo clippy --quiet --manifest-path packages/kiln/Cargo.toml -- -D warnings
 

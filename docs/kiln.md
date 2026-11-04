@@ -104,7 +104,8 @@ Only packages that:
 2. no other active profile manages or lists, and
 3. are still installed.
 
-pacman then removes them with `-Rs` and shows its usual confirmation. If
+pacman then removes them with `-R` and shows its usual confirmation.
+Dependencies stay installed so packages needed by other active profiles are protected. If
 another package still depends on one of them, pacman refuses the whole
 transaction and kiln keeps the profile active.
 
