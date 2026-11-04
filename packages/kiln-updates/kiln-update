@@ -154,6 +154,7 @@ def main():
             data = collect()
             if data["kiln_available"]:
                 install_package(*candidate(data["kiln_release"]))
+                data["installed"] = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
                 data["kiln_available"] = False
             STATE.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(mode="w", dir=STATE.parent, delete=False) as temporary:

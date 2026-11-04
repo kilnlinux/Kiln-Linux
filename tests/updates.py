@@ -109,6 +109,32 @@ class UpdateTests(unittest.TestCase):
             install.assert_not_called()
             self.assertFalse(state.exists())
 
+    def test_apply_records_installed_version_in_readable_cache(self):
+        import builtins
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.json"
+            real_open = builtins.open
+            def open_file(path, *args, **kwargs):
+                if path == "/run/kiln-update.lock":
+                    path = Path(directory) / "update.lock"
+                return real_open(path, *args, **kwargs)
+            data = {"installed": "0.1.0-1", "kiln_available": True,
+                    "kiln_release": {"assets": [self.asset()]}}
+            with patch.object(update.sys, "argv", ["kiln-update", "--apply"]), \
+                 patch.object(update.os, "geteuid", return_value=0), \
+                 patch.object(update, "STATE", state), \
+                 patch.object(update, "collect", return_value=data), \
+                 patch.object(update, "install_package") as install, \
+                 patch.object(update.subprocess, "check_output", return_value="kiln 0.2.0-1\n"), \
+                 patch("builtins.open", side_effect=open_file), \
+                 patch("sys.stdout", new_callable=io.StringIO):
+                update.main()
+            install.assert_called_once()
+            saved = json.loads(state.read_text())
+            self.assertEqual(saved["installed"], "0.2.0-1")
+            self.assertFalse(saved["kiln_available"])
+            self.assertEqual(state.stat().st_mode & 0o777, 0o644)
+
     def test_cached_status_never_uses_network(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state.json"
