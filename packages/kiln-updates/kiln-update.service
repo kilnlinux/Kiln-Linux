@@ -1,0 +1,10 @@
+[Unit]
+Description=Update kiln and check Kiln Linux GitHub releases
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/kiln/os-release
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/kiln-update --apply
+TimeoutStartSec=15min

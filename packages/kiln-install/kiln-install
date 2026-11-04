@@ -479,9 +479,9 @@ install_base() {
 }
 
 install_kiln_files() {
-    install -Dm755 "$(command -v kiln)" "$MNT/usr/local/bin/kiln"
     mkdir -p "$MNT$SHARE"
     cp -r "$SHARE/profiles" "$SHARE/repo" "$MNT$SHARE/"
+    install -m644 "$SHARE/build.json" "$MNT$SHARE/build.json"
     install -m644 "$SHARE/logo" "$MNT$SHARE/logo"
     install -Dm644 /etc/xdg/fastfetch/config.jsonc "$MNT/etc/xdg/fastfetch/config.jsonc"
     # Home skeleton (.xinitrc, .Xresources, .config); useradd copies it to the user.
@@ -499,7 +499,7 @@ install_kiln_files() {
 SigLevel = Optional TrustAll
 Server = file:///usr/share/kiln/repo
 CONF
-    retry_downloads "$MNT/etc/pacman.d/mirrorlist" arch-chroot "$MNT" pacman -Syu --noconfirm # -u: never a partial upgrade
+    retry_downloads "$MNT/etc/pacman.d/mirrorlist" arch-chroot "$MNT" pacman -Syu --needed --noconfirm kiln kiln-updates # -u: never a partial upgrade
 }
 
 configure_system() {
@@ -523,6 +523,7 @@ apply_profiles() {
     done
     # kiln never enables services; the installer does, for what it installed.
     run arch-chroot "$MNT" systemctl enable NetworkManager.service
+    run arch-chroot "$MNT" systemctl enable kiln-update.timer
     dm=$(desktop_field "$DESKTOP" 4)
     if [[ $dm != - ]]; then run arch-chroot "$MNT" systemctl enable "$dm.service"; fi
     # ~/.xinitrc starts twmx; point it at the chosen X11 window manager.

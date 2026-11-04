@@ -1,0 +1,174 @@
+#!/usr/bin/python3
+"""Update the kiln pacman package and report Kiln Linux source/releases."""
+import argparse
+import datetime
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+
+CLI_REPO = "kilnlinux/kiln-package-manager"
+DISTRO_REPO = "kilnlinux/Kiln-Linux"
+STATE = Path("/var/lib/kiln/updates.json")
+BUILD = Path("/usr/share/kiln/build.json")
+MAX_PACKAGE = 64 * 1024 * 1024
+
+
+def fetch_json(path):
+    request = urllib.request.Request(
+        "https://api.github.com/repos/" + path,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "Kiln-update"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = response.read(2 * 1024 * 1024 + 1)
+    except urllib.error.HTTPError as error:
+        if error.code == 404 and path.endswith("/releases/latest"):
+            return None
+        raise
+    if len(data) > 2 * 1024 * 1024:
+        raise ValueError("GitHub response exceeds size limit")
+    value = json.loads(data)
+    if not isinstance(value, dict):
+        raise ValueError("GitHub response is not an object")
+    return value
+
+
+def candidate(release):
+    if not release or release.get("draft") or release.get("prerelease"):
+        return None
+    matches = []
+    for asset in release.get("assets", []):
+        match = re.fullmatch(r"kiln-([0-9][A-Za-z0-9.+_~\-]*-[0-9]+)-x86_64\.pkg\.tar\.zst", asset.get("name", ""))
+        if match:
+            matches.append((match[1], asset))
+    if len(matches) > 1:
+        raise ValueError("release contains multiple kiln packages")
+    return matches[0] if matches else None
+
+
+def newer(version, installed):
+    return int(subprocess.check_output(["vercmp", version, installed], text=True).strip()) > 0
+
+
+def install_package(version, asset):
+    digest = asset.get("digest", "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("release asset has no valid GitHub SHA-256 digest")
+    url = asset.get("browser_download_url", "")
+    if not url.startswith(f"https://github.com/{CLI_REPO}/releases/download/"):
+        raise ValueError("package URL is outside the kiln release repository")
+    if not 0 < asset.get("size", 0) <= MAX_PACKAGE:
+        raise ValueError("invalid release package size")
+    with tempfile.TemporaryDirectory(prefix="kiln-update-") as directory:
+        package = Path(directory) / asset["name"]
+        checksum = hashlib.sha256()
+        size = 0
+        with urllib.request.urlopen(url, timeout=60) as response, package.open("wb") as target:
+            while chunk := response.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_PACKAGE:
+                    raise ValueError("download exceeds package size limit")
+                checksum.update(chunk)
+                target.write(chunk)
+        if size != asset["size"] or checksum.hexdigest() != digest.removeprefix("sha256:"):
+            raise ValueError("package size or SHA-256 digest does not match GitHub")
+        metadata = subprocess.check_output(
+            ["pacman", "-Qip", str(package)], text=True, env={**os.environ, "LC_ALL": "C"},
+        )
+        fields = dict(line.split(":", 1) for line in metadata.splitlines() if ":" in line)
+        fields = {key.strip(): value.strip() for key, value in fields.items()}
+        if (fields.get("Name"), fields.get("Version"), fields.get("Architecture")) != ("kiln", version, "x86_64"):
+            raise ValueError("downloaded package name, version or architecture is wrong")
+        # Recheck after downloading so a concurrent upgrade cannot cause a downgrade.
+        installed = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
+        if newer(version, installed):
+            subprocess.run(["pacman", "-U", "--noconfirm", "--", str(package)], check=True)
+
+
+def collect():
+    installed = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
+    release = fetch_json(CLI_REPO + "/releases/latest")
+    package = candidate(release)
+    distro = fetch_json(DISTRO_REPO + "/releases/latest")
+    source = fetch_json(DISTRO_REPO + "/commits/main")
+    build = json.loads(BUILD.read_text()) if BUILD.exists() else {}
+    newer_release = False
+    if distro and distro.get("tag_name") != build.get("release"):
+        published = datetime.datetime.fromisoformat(distro["published_at"].replace("Z", "+00:00"))
+        built = datetime.datetime.fromisoformat(build.get("built_at", "1970-01-01T00:00:00+00:00"))
+        newer_release = published > built
+    return {
+        "installed": installed,
+        "kiln_available": bool(package and newer(package[0], installed)),
+        "kiln_release": release,
+        "distro_release": distro if newer_release else None,
+        "source_update": source.get("sha") != build.get("revision"),
+        "source_url": f"https://github.com/{DISTRO_REPO}/commits/main",
+        "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
+def show(data, quiet=False):
+    if data.get("kiln_available"):
+        print(f"kiln package update available: https://github.com/{CLI_REPO}/releases/latest")
+    elif not quiet:
+        print("kiln package: up to date")
+    release = data.get("distro_release")
+    if release:
+        print(f"Kiln Linux release available: {release['tag_name']}")
+        print(f"https://github.com/{DISTRO_REPO}/releases/latest")
+    if data.get("source_update"):
+        print(f"Kiln Linux source changes available: {data['source_url']}")
+    if not quiet:
+        print("Distro release checks do not reinstall or replace the running system.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="check GitHub without installing")
+    mode.add_argument("--apply", action="store_true", help="update kiln through pacman; root required")
+    mode.add_argument("--status", action="store_true", help="show cached update notices without network access")
+    args = parser.parse_args()
+    if args.status:
+        if STATE.exists():
+            show(json.loads(STATE.read_text()), quiet=True)
+        return
+    if args.apply and os.geteuid() != 0:
+        parser.error("--apply requires root; use sudo kiln-update --apply")
+    # Only modifying invocations lock; unprivileged checks never write system files.
+    if args.apply:
+        with open("/run/kiln-update.lock", "w") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return
+            data = collect()
+            if data["kiln_available"]:
+                install_package(*candidate(data["kiln_release"]))
+                data["kiln_available"] = False
+            STATE.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", dir=STATE.parent, delete=False) as temporary:
+                json.dump(data, temporary)
+                temporary.write("\n")
+            os.chmod(temporary.name, 0o644)
+            os.replace(temporary.name, STATE)
+    else:
+        data = collect()
+    show(data)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, IndexError, subprocess.CalledProcessError) as error:
+        print(f"kiln-update: {error}", file=sys.stderr)
+        sys.exit(1)

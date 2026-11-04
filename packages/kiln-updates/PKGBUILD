@@ -1,0 +1,16 @@
+pkgname=kiln-updates
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Automatic kiln package updates and Kiln Linux GitHub release checks'
+arch=('any')
+url='https://github.com/kilnlinux/Kiln-Linux'
+license=('MIT')
+depends=('kiln' 'python' 'pacman' 'ca-certificates')
+
+package() {
+    install -Dm755 "$startdir/kiln-update" "$pkgdir/usr/bin/kiln-update"
+    install -Dm644 "$startdir/kiln-update.service" "$pkgdir/usr/lib/systemd/system/kiln-update.service"
+    install -Dm644 "$startdir/kiln-update.timer" "$pkgdir/usr/lib/systemd/system/kiln-update.timer"
+    install -Dm644 "$startdir/kiln-updates.sh" "$pkgdir/etc/profile.d/kiln-updates.sh"
+    install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/kiln-updates/LICENSE"
+}

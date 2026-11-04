@@ -28,9 +28,12 @@ trap 'die "build failed at line $LINENO (see output above)"' ERR
 # so delete it inside the same user namespace.
 as_ns() { if ((EUID == 0)); then "$@"; else unshare --map-auto --map-root-user -- "$@"; fi; }
 
+if [[ ! -f packages/kiln/Cargo.toml ]]; then
+    die "kiln source is missing; run git submodule update --init --recursive"
+fi
 say "Checking build dependencies"
 missing=()
-for c in mkarchiso cargo pacman mksquashfs xorriso unshare makepkg repo-add git fakeroot gcc; do
+for c in mkarchiso cargo pacman mksquashfs xorriso unshare makepkg repo-add git fakeroot gcc python3; do
     command -v "$c" >/dev/null || missing+=("$c")
 done
 ((${#missing[@]} == 0)) || die "missing: ${missing[*]}  (install: sudo pacman -S --needed archiso rust base-devel git)"
@@ -48,8 +51,11 @@ for pkgbuild in packages/*/PKGBUILD; do
     dir=$(dirname "$pkgbuild")
     say "  makepkg $dir"
     # Not -s: makepkg reports missing build dependencies instead of installing them.
+    makepkg_args=(--force --cleanbuild --noconfirm)
+    # This package only copies files; its kiln runtime dependency is built for the ISO, not installed on the host.
+    [[ $dir != packages/kiln-updates ]] || makepkg_args+=(--nodeps)
     (cd "$dir" && BUILDDIR=$ROOT/build/makepkg PKGDEST=$REPO SRCDEST=$ROOT/build/makepkg/src \
-        makepkg --force --cleanbuild --noconfirm)
+        makepkg "${makepkg_args[@]}")
 done
 repo-add --quiet "$REPO/kiln.db.tar.zst" "$REPO"/*.pkg.tar.zst
 
@@ -59,7 +65,23 @@ rm -rf -- "$PROFILE"
 mkdir -p build
 cp -a archiso/kiln "$PROFILE"
 A=$PROFILE/airootfs
-install -Dm755 packages/kiln/target/release/kiln "$A/usr/local/bin/kiln"
+# pacstrap installs the kiln and kiln-updates packages from the local repository.
+cat >>"$PROFILE/pacman.conf" <<CONF
+
+[kiln]
+SigLevel = Optional TrustAll
+Server = file://$REPO
+CONF
+printf '\nkiln\nkiln-updates\n' >>"$PROFILE/packages.x86_64"
+python3 - "$A/usr/share/kiln/build.json" <<'PYMETA'
+import datetime, json, pathlib, subprocess, sys
+revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+tag = subprocess.run(["git", "describe", "--tags", "--exact-match"], capture_output=True, text=True)
+path = pathlib.Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps({"revision": revision, "release": tag.stdout.strip() if tag.returncode == 0 else None,
+                            "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}) + "\n")
+PYMETA
 install -Dm755 packages/kiln-install/kiln-install "$A/usr/local/bin/kiln-install"
 install -d "$A/usr/share/kiln/profiles"
 install -m644 profiles/*.toml "$A/usr/share/kiln/profiles/"

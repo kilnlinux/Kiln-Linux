@@ -2,7 +2,7 @@
 .PHONY: help iso test e2e run run-bios run-disk run-disk-bios clean
 
 help:
-	@echo "make iso        build the ISO into out/ (no root needed)"
+	@echo "make iso        build the ISO into out/ (clone with --recurse-submodules; no root needed)"
 	@echo "make test       unit, integration and lint checks"
 	@echo "make e2e        install the newest ISO in QEMU unattended, boot it, screenshot (needs qemu)"
 	@echo "make run        boot the newest ISO in QEMU (UEFI) with a blank disk"

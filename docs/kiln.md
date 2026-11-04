@@ -133,3 +133,33 @@ path still use the profile search directories.
 
 Deleting this file makes kiln forget active profiles; it never affects
 installed packages.
+
+## Updating kiln
+
+Source and stable packages: https://github.com/kilnlinux/kiln-package-manager.
+The distro's `packages/kiln` directory is a pinned Git submodule. After cloning,
+run `git submodule update --init --recursive` before building or testing.
+
+New Kiln installations use `/usr/bin/kiln`, owned by the kiln pacman package,
+and enable `kiln-update.timer`. It checks daily, downloads a newer stable
+x86_64 package, verifies its GitHub SHA-256 digest and package metadata, then
+installs it through pacman. Build-library minimum versions prevent installation
+on an older incompatible system; update Arch packages with `sudo pacman -Syu`
+if pacman reports unsatisfied dependencies. State and profiles remain in place.
+
+```sh
+kiln-update --check             # current GitHub CLI/distro releases and source
+sudo kiln-update --apply        # update the CLI package; report distro changes
+kiln-update --status            # cached notices, without network access
+sudo systemctl disable --now kiln-update.timer
+```
+
+The updater never installs an ISO or runs a distro upgrade. New distro release
+and source links are reported separately. Release tags stamped into an ISO
+identify its version; builds without a tag compare release publication time
+with the ISO build timestamp. Source checks compare the main branch with the
+revision recorded at build time.
+
+Old ISOs that copied an unowned `/usr/local/bin/kiln` need migration before
+using this updater: install the kiln package and rename the old local binary
+so it cannot shadow `/usr/bin/kiln`. New ISOs handle package installation directly.

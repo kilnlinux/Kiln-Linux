@@ -101,10 +101,11 @@ tools. `kiln-install --config FILE` runs the same install with no questions.
 
 ## Build it
 
-On Arch Linux:
+On Arch Linux, clone with `git clone --recurse-submodules` (or run
+`git submodule update --init --recursive` in an existing checkout):
 
 ```sh
-sudo pacman -S --needed archiso rust base-devel git
+sudo pacman -S --needed archiso rust base-devel git python
 make test      # unit, integration and lint checks
 make iso       # writes out/kilnlinux-YYYY.MM.DD-x86_64.iso; no root needed
 ```
@@ -123,7 +124,7 @@ make e2e       # install unattended in QEMU, boot it, take screenshots
 
 ```text
 archiso/kiln/           archiso profile, derived from upstream releng
-packages/kiln/          the kiln CLI (Rust; depends on serde and toml)
+packages/kiln/          pinned kiln-package-manager Git submodule (Rust)
 packages/kiln-install/  the installer (bash and dialog)
 packages/twmx/          PKGBUILD and Kiln's config.h for twmx
 profiles/               core, the seven desktops, developer, audio
@@ -149,7 +150,7 @@ Kiln Linux is young. `make e2e` installs the ISO in QEMU and boots the
 result into twmx, and that path works today. Still missing:
 
 - a hosted repository for `[kiln]` package updates; twmx currently updates per user from GitHub
-- a pacman package for kiln itself (the installer copies the binary)
+- broader hardware testing
 
 The other six desktops go through the same installer steps, but nobody has
 installed each one in a VM yet. [docs/testing.md](docs/testing.md) keeps the
@@ -159,3 +160,18 @@ list.
 
 MIT, see [LICENSE](LICENSE). `archiso/kiln/` derives from archiso's releng
 profile and stays GPL-3.0-or-later, like archiso.
+
+## Kiln and distro updates
+
+The CLI lives in [kiln-package-manager](https://github.com/kilnlinux/kiln-package-manager).
+The distro pins its source as a submodule and installs it as a pacman package.
+A daily `kiln-update.timer` installs newer stable CLI release packages after
+checking GitHub's SHA-256 asset digest and the package identity. Pacman checks
+dependencies and owns every installed file. If newer libraries are needed,
+run `sudo pacman -Syu` before retrying the CLI update.
+
+`kiln-update --check` checks the CLI, distro releases and distro source commits
+without installing anything. `sudo kiln-update --apply` updates only the CLI;
+it reports distro releases without replacing the running system. Cached notices
+appear at console login. Logs: `journalctl -u kiln-update.service`.
+Disable automatic checks with `sudo systemctl disable --now kiln-update.timer`.

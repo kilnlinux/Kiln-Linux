@@ -279,3 +279,23 @@ To offer it in the installer, add a profile in `profiles/` and an entry in
 `make iso` builds it into `[kiln]`. List it in a profile like any package.
 
 **Branding**: see `branding/README.md` for where each piece lives.
+
+## CLI source and update channel
+
+`packages/kiln` pins the public `kilnlinux/kiln-package-manager` Git submodule.
+Its PKGBUILD packages `/usr/bin/kiln`; tag workflows publish stable x86_64 Arch
+packages. The distro builds that same recipe into its local repository, uses
+it in the live ISO, and installs kiln plus kiln-updates in the target.
+
+`packages/kiln-updates` supplies the daily system timer and `kiln-update`.
+Only stable CLI releases are installed. HTTPS downloads must match GitHub's
+asset digest, size, expected package name, architecture and version. A final
+version check prevents downgrades after concurrent updates. Pacman owns the
+transaction; dependency failures preserve the existing CLI.
+
+The build records revision, release tag and timestamp in
+`/usr/share/kiln/build.json`. The updater uses it to report newer distro GitHub
+releases and main-branch commits. It caches notices in
+`/var/lib/kiln/updates.json`; console login reads that cache without network
+requests. It does not replace the running distro. The timer is enabled only
+in installed Kiln systems, not on the build host or live ISO.

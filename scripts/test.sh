@@ -12,11 +12,12 @@ t() { local name=$1; shift; if "$@" >/tmp/kiln-test.$$ 2>&1; then ok "$name"; el
 t "installer: failure handling" python3 tests/installer.py
 t "theme: graphite fills every @name@ in configs" tests/theme.sh
 t "twmx: user updater" python3 tests/twmx-update.py
+t "kiln: release updater" python3 -B tests/updates.py
 
 t "kiln: cargo test (unit + integration)" cargo test --quiet --manifest-path packages/kiln/Cargo.toml
 t "kiln: cargo clippy, no warnings" cargo clippy --quiet --manifest-path packages/kiln/Cargo.toml -- -D warnings
 
-shells=(packages/kiln-install/kiln-install scripts/*.sh archiso/kiln/profiledef.sh packages/twmx/PKGBUILD packages/twmx/twmx-update-kiln)
+shells=(packages/kiln-install/kiln-install scripts/*.sh archiso/kiln/profiledef.sh packages/*/PKGBUILD packages/twmx/twmx-update-kiln packages/kiln-updates/kiln-updates.sh)
 for f in "${shells[@]}"; do t "bash -n $f" bash -n "$f"; done
 if command -v shellcheck >/dev/null; then
     t "shellcheck" shellcheck -S warning "${shells[@]}"

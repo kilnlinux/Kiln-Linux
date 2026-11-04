@@ -23,6 +23,5 @@ file_permissions=(
   ["/root/.gnupg"]="0:0:700"
   ["/usr/local/bin/choose-mirror"]="0:0:755"
   ["/usr/local/bin/livecd-sound"]="0:0:755"
-  ["/usr/local/bin/kiln"]="0:0:755"
   ["/usr/local/bin/kiln-install"]="0:0:755"
 )
