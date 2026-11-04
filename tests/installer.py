@@ -117,3 +117,44 @@ echo COMPLETED
             assert not Path(str(mirrorlist) + ".kiln-original").exists()
         assert ("COMPLETED" in result.stdout) == success
 print("Downloads: bounded retry, fallback mirrors, full upgrade, preserved mirror list, fatal signature errors.")
+
+# Check interactive decisions without running dialog or touching any disks.
+ui_checks = r'''
+set -e
+online() { return 0; }
+next=user
+capture=$(mktemp)
+d() { printf '%s\n' "$@" > "$capture"; }
+main_menu
+ grep -q '\[required\] create your login' "$capture"
+ grep -q '\[required\] choose a disk' "$capture"
+ grep -q 'Still needed:' "$capture"
+USER_NAME=test USER_PW=secret DISK=/dev/test SCHEME=auto
+main_menu
+ grep -q 'Required choices set' "$capture"
+ grep -q 'ERASE /dev/test' "$capture"
+ ! grep -q secret "$capture"
+rm -f "$capture"
+d() { if [[ " $* " == *' --inputbox '* ]]; then printf '%s' "$ANSWER"; fi; }
+ANSWER=/dev/test
+confirm_disk_changes
+ANSWER=wrong
+if confirm_disk_changes; then exit 1; fi
+SCHEME=manual ROOT=/dev/test2 ESP=/dev/test1 FORMAT_ESP=yes
+ANSWER=/dev/test2
+confirm_disk_changes
+ANSWER=/dev/test
+if confirm_disk_changes; then exit 1; fi
+ROOT_PW=original
+d() { return 255; }
+ask_password() { echo 'Unexpected password prompt after Escape' >&2; exit 1; }
+# Menu handlers run without errexit; a canceled dialog must preserve the setting.
+set +e
+ask_root_password
+set -e
+[[ $ROOT_PW == original ]]
+echo 'TUI: required choices, review status, auto/manual disk confirmation and Escape behavior pass.'
+'''
+result = subprocess.run(["bash"], input=functions + ui_checks, capture_output=True, text=True, timeout=10)
+assert result.returncode == 0, (result.stdout, result.stderr)
+print(result.stdout.strip())

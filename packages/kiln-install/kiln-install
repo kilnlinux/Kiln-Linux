@@ -182,13 +182,18 @@ ask_password() {
 }
 
 ask_root_password() {
-    if d --title "Root password" --yes-label "Lock root" --no-label "Set password" --yesno \
-        "Lock the root account? Your user gets sudo either way.\n\nA root password lets you log in to systemd's emergency shell." 10 60; then
-        ROOT_PW=
-    else
-        local p
-        p=$(ask_password "Root password" "Password for the root account:") && ROOT_PW=$p
-    fi
+    local answer
+    d --title "Root password" --yes-label "Lock root" --no-label "Set password" --yesno \
+        "Lock the root account? Your user gets sudo either way.\n\nA root password lets you log in to systemd's emergency shell." 10 60
+    answer=$?
+    case $answer in
+        0) ROOT_PW= ;;
+        1)
+            local p
+            p=$(ask_password "Root password" "Password for the root account:") && ROOT_PW=$p
+            ;;
+        *) return ;;
+    esac
 }
 
 ask_user() {
@@ -671,14 +676,14 @@ validate() {
 install_all() {
     set -Eeo pipefail
     trap 'echo "FAILED: line $LINENO: $BASH_COMMAND"' ERR
-    echo "== Partitioning and formatting";   partition_and_mount
-    echo "== Installing the base system";    install_base
-    echo "== Adding Kiln";                   install_kiln_files
-    echo "== Configuring";                   configure_system
-    echo "== Installing profiles";           apply_profiles
-    echo "== Creating accounts";             create_user
-    echo "== Installing the boot loader";    install_bootloader
-    echo "== Checking the installed system"; validate
+    echo "== [1/8] Partitioning and formatting";   partition_and_mount
+    echo "== [2/8] Installing the base system";    install_base
+    echo "== [3/8] Adding Kiln";                   install_kiln_files
+    echo "== [4/8] Configuring";                   configure_system
+    echo "== [5/8] Installing profiles";           apply_profiles
+    echo "== [6/8] Creating accounts";             create_user
+    echo "== [7/8] Installing the boot loader";    install_bootloader
+    echo "== [8/8] Checking the installed system"; validate
     sync
     run umount -R "$MNT"
     if [[ $ENCRYPT == yes ]]; then run cryptsetup close "$CRYPT_NAME"; fi
@@ -707,7 +712,9 @@ do_install() {
 }
 
 summary() {
-    if [[ $SCHEME == auto ]]; then
+    if [[ -z $DISK ]]; then
+        printf 'Disk:        NOT SELECTED\n'
+    elif [[ $SCHEME == auto ]]; then
         printf 'Disk:        ERASE all of %s\n' "$DISK"
     else
         printf 'Disk:        %s (root, formatted), %s (/boot%s)\n' "$ROOT" "$ESP" "$([[ $FORMAT_ESP == yes ]] && echo ", formatted")"
@@ -720,6 +727,60 @@ summary() {
     printf 'Keyboard:    %s; locale %s; time zone %s\n' "$KEYMAP" "$LOCALE" "$TIMEZONE"
     printf 'Boot loader: %s (%s)\n' "$BOOTLOADER" "${FIRMWARE^^}"
     printf '\nAfter installing: reboot, then %s.\n' "$(desktop_field "$DESKTOP" 5)"
+}
+
+main_menu() {
+    local disk_desc="[required] choose a disk" net status
+    local -a missing=()
+    [[ -n $DISK && $SCHEME == auto ]] && disk_desc="ERASE $DISK, $FS"
+    [[ -n $DISK && $SCHEME == manual ]] && disk_desc="$ROOT + $ESP, $FS"
+    [[ -n $DISK && $ENCRYPT == yes ]] && disk_desc+=", encrypted"
+    if online; then net=connected; else net="[required] connect to internet"; missing+=(network); fi
+    [[ -n $USER_NAME && -n $USER_PW ]] || missing+=("user account")
+    [[ -n $DISK && -n $SCHEME ]] || missing+=("destination disk")
+    if ((${#missing[@]})); then
+        status=$(printf '%s, ' "${missing[@]}")
+        status="Still needed: ${status%, }"
+    else
+        status="Required choices set. Review your settings before installing."
+    fi
+    d --title "Kiln Linux / ${FIRMWARE^^}" --no-tags --ok-label Choose --cancel-label Exit \
+        --default-item "$next" --item-help \
+        --menu "$status\nDefaults are ready to use. Select any item to change it." 23 78 12 \
+        keyboard   "Keyboard      $KEYMAP" "Console keyboard layout" \
+        network    "Network       $net" "Internet is required to download packages" \
+        hostname   "Hostname      $HOSTNAME_NEW" "The name of this computer on your network" \
+        locale     "Locale        $LOCALE" "System language and character encoding" \
+        timezone   "Timezone      $TIMEZONE" "Local time zone" \
+        root       "Root          $([[ -n $ROOT_PW ]] && echo "password set" || echo "locked; use sudo")" "Your user can administer the system with sudo" \
+        user       "User account  ${USER_NAME:-[required] create your login}" "Create the account you will log in with" \
+        desktop    "Desktop       $(desktop_field "$DESKTOP" 2)" "Choose a desktop or a console-only installation" \
+        extras     "Extras        ${EXTRAS[*]:-none}" "Optional audio and developer packages" \
+        disk       "Disk          $disk_desc" "Choose partitions, filesystem and optional encryption" \
+        bootloader "Boot loader   $BOOTLOADER" "Boot loader for this computer's firmware" \
+        review     "Review        All settings and planned disk changes" "Review without starting the installation" \
+        install    "Install       Check settings and confirm disk changes" "Final review and disk confirmation are required" \
+        log        "Log           View the full installation log" "Use arrow keys to scroll; no log before the first attempt" \
+        help       "Help          Navigation and installation guidance" "Keyboard shortcuts, defaults and disk safety"
+}
+
+confirm_disk_changes() {
+    local target=$DISK action="Everything on $DISK will be erased."
+    if [[ $SCHEME == manual ]]; then
+        target=$ROOT
+        action="All data on $ROOT will be erased."
+        [[ $FORMAT_ESP != yes ]] || action+="\n$ESP will also be formatted."
+    fi
+    local typed
+    typed=$(d --title "Confirm disk changes" --inputbox "$action\n\nType $target to confirm:" 12 74) || return 1
+    [[ $typed == "$target" ]] && return 0
+    d --title "Not confirmed" --msgbox "Formatting was not confirmed. Return to Disk to check your selection." 8 68
+    return 1
+}
+
+installer_help() {
+    d --title "Using the Kiln installer" --msgbox \
+        "Use Up/Down to select a setting, Enter to open it, and Tab to switch buttons. Escape goes back.\n\nKeep the defaults unless you want to change them. A user account, internet connection and destination disk are required.\n\nReview shows your choices. Install checks them, then asks you to confirm the disk or partition name before formatting.\n\nManual partitioning opens cfdisk: changes saved there take effect immediately.\n\nIf installation fails, Log shows the full output. Unmount the target before starting another attempt." 22 76
 }
 
 # --- Main --------------------------------------------------------------------
@@ -752,29 +813,17 @@ if [[ ${1-} == --config ]]; then
     exit 1
 fi
 
-shown() { if [[ -n $1 ]]; then printf '%s' "$1"; else printf '(not set)'; fi; }
-
-next=keyboard
+if [[ -r /etc/kiln/dialogrc ]]; then export DIALOGRC=/etc/kiln/dialogrc; fi
+next=user
 while true; do
-    disk_desc="(not set)"
-    [[ -n $DISK && $SCHEME == auto ]] && disk_desc="erase $DISK, $FS"
-    [[ -n $DISK && $SCHEME == manual ]] && disk_desc="$ROOT + $ESP, $FS"
-    [[ -n $DISK && $ENCRYPT == yes ]] && disk_desc+=", encrypted"
-    net=$(online && echo connected || echo "not connected")
-    choice=$(d --title "Kiln Linux" --cancel-label Exit --default-item "$next" \
-        --menu "Set each item, then choose Install." 21 70 13 \
-        keyboard   "Keyboard      $KEYMAP" \
-        network    "Network       $net" \
-        hostname   "Hostname      $HOSTNAME_NEW" \
-        locale     "Locale        $LOCALE" \
-        timezone   "Timezone      $TIMEZONE" \
-        root       "Root          $([[ -n $ROOT_PW ]] && echo "password set" || echo "locked (use sudo)")" \
-        user       "User account  $(shown "$USER_NAME")" \
-        desktop    "Desktop       $(desktop_field "$DESKTOP" 2)" \
-        extras     "Extras        $(shown "${EXTRAS[*]}")" \
-        disk       "Disk          $disk_desc" \
-        bootloader "Boot loader   $BOOTLOADER (${FIRMWARE^^})" \
-        install    "Install") || { clear; exit 0; }
+    choice=$(main_menu) || {
+        if d --title "Exit installer?" --defaultno --yes-label Exit --no-label "Keep editing" \
+            --yesno "Leave the installer? Your current menu choices will be lost." 8 64; then
+            clear
+            exit 0
+        fi
+        continue
+    }
     case $choice in
         keyboard) ask_keymap; next=network ;;
         network) ask_network; next=hostname ;;
@@ -787,6 +836,15 @@ while true; do
         extras) ask_extras; next=disk ;;
         disk) ask_disk; next=install ;;
         bootloader) ask_bootloader; next=install ;;
+        review) d --title "Review / planned disk changes" --msgbox "$(summary)" 22 78; next=install ;;
+        log)
+            if [[ -s $LOG ]]; then
+                d --title "Installation log / scroll with arrow keys" --textbox "$LOG" 22 78
+            else
+                d --title "Installation log" --msgbox "No installation has been started in this session." 7 64
+            fi
+            ;;
+        help) installer_help ;;
         install)
             problem=$(settings_problem)
             if [[ -n $problem ]]; then
@@ -795,10 +853,7 @@ while true; do
             fi
             d --title "Install Kiln Linux?" --defaultno --yes-label Install --no-label Back \
                 --yesno "$(summary)" 20 76 || continue
-            if [[ $SCHEME == auto ]]; then
-                typed=$(d --title "Erase $DISK" --inputbox "Everything on $DISK will be erased.\n\nType $DISK to confirm:" 10 60) || continue
-                [[ $typed == "$DISK" ]] || { d --msgbox "Not confirmed; nothing was changed." 6 44; continue; }
-            fi
+            confirm_disk_changes || continue
             # Keep do_install outside a conditional so install_all retains errexit.
             do_install
             if (($? == 0)); then

@@ -54,7 +54,9 @@ kiln-install
 ```
 
 The main menu lists every setting with its current value. Pick items in any
-order (arrow keys, Enter), then Install:
+order (arrow keys, Enter), then Install. Required choices are marked in the
+menu; the bottom line explains the selected item. Tab switches buttons and
+Escape goes back. Exit asks before discarding menu choices:
 
 | Item | What it sets |
 |---|---|
@@ -67,9 +69,14 @@ order (arrow keys, Enter), then Install:
 | Extras | PipeWire audio, developer tools |
 | Disk | erase a whole disk (1 GiB EFI partition + root), or partition with cfdisk and pick the EFI and root partitions; ext4 or btrfs; optional LUKS2 encryption of root (passphrase at every boot) |
 | Boot loader | systemd-boot (default on UEFI, UEFI only), GRUB (default on BIOS) or Limine |
+| Review | all settings and planned disk changes, without starting installation |
+| Log | full scrollable output from the last installation attempt |
+| Help | navigation, defaults and disk safety |
 
 Install checks everything first, shows a summary, and asks you to type the
-disk name before erasing it.
+disk name before erasing it. Manual installs require the root partition name
+before formatting; the summary also identifies whether /boot will be formatted.
+Changes explicitly saved in cfdisk take effect immediately.
 
 Unattended installs: `kiln-install --config FILE`, where FILE sets the
 variables listed at the top of the script, for example:
@@ -85,8 +92,8 @@ A locked root means systemd's emergency shell can't log in; boot with
 `init=/bin/bash` on the kernel command line (press `e` in the boot menu) to
 recover, or set a root password under Root.
 
-If anything fails, the installer says so, shows the end of the log, and
-writes everything to `/tmp/kiln-install.log`. Copy that log off before rebooting
+Installation output labels each of the eight stages. If anything fails,
+the installer opens the full scrollable log and writes everything to `/tmp/kiln-install.log`. Copy that log off before rebooting
 (the live system lives in RAM).
 
 ## After installing
