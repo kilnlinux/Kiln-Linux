@@ -53,26 +53,27 @@ iwctl                 # Wi-Fi only; Ethernet is automatic
 kiln-install
 ```
 
-The main menu lists every setting with its current value. Pick items in any
-order (arrow keys, Enter), then Install. Required choices are marked in the
-menu; the bottom line explains the selected item. Tab switches buttons and
-Escape goes back. Exit asks before discarding menu choices:
+The installer looks and works like Void Linux's: stock `dialog` screens and a
+main menu of named items. Pick them in any order (arrow keys, Enter); after
+each one the cursor moves to the next. Settings shows every value and what is
+still needed (a user account, a disk, a network connection). Install checks
+everything, shows the same summary, and asks you to type the disk name before
+erasing it. Tab switches buttons, Escape goes back, Exit asks first:
 
 | Item | What it sets |
 |---|---|
 | Keyboard | console keymap |
 | Network | shows whether you're online; opens `iwctl` for Wi-Fi |
 | Hostname, Locale, Timezone | as named |
-| Root | locked (default; use sudo) or a password |
-| User account | your login, in `wheel`, with sudo |
+| RootPassword | locked (default; use sudo) or a password |
+| UserAccount | your login, in `wheel`, with sudo |
 | Desktop | twmx (default), i3, Sway, Hyprland, XFCE, KDE Plasma, GNOME, or none |
 | Extras | PipeWire audio, developer tools |
-| Kernel | `linux` (default), `linux-lts`, `linux-zen` or `linux-hardened` |
+| Kernel | one or more of `linux` (default), `linux-lts`, `linux-zen`, `linux-hardened`; the first boots by default, each other gets its own boot menu entry |
 | Disk | erase a whole disk (1 GiB EFI partition + root), or partition with cfdisk and pick the EFI and root partitions; ext4 or btrfs; optional LUKS2 encryption of root (passphrase at every boot) |
-| Boot loader | systemd-boot (default on UEFI, UEFI only), GRUB (default on BIOS) or Limine |
-| Review | all settings and planned disk changes, without starting installation |
-| Log | full scrollable output from the last installation attempt |
-| Help | navigation, defaults and disk safety |
+| BootLoader | systemd-boot (default on UEFI, UEFI only), GRUB (default on BIOS) or Limine |
+| Settings | all settings and planned disk changes, without installing |
+| Log | the last installation attempt's output, scrollable (shown once there is one) |
 
 Install checks everything first, shows a summary, and asks you to type the
 disk name before erasing it. Manual installs require the root partition name
@@ -87,7 +88,7 @@ DISK=/dev/vda SCHEME=auto FS=ext4 DESKTOP=twmx EXTRAS=(audio)
 USER_NAME=me USER_PW='change me' TIMEZONE=Europe/Berlin
 ENCRYPT=yes LUKS_PW='disk passphrase'   # optional
 BOOTLOADER=limine                       # optional: systemd-boot, grub, limine
-KERNEL=linux-lts                        # optional: linux, linux-lts, linux-zen, linux-hardened
+KERNEL=(linux linux-lts)                # optional: any of linux, linux-lts, linux-zen, linux-hardened; first is the default
 ```
 
 A locked root means systemd's emergency shell can't log in; boot with

@@ -165,13 +165,17 @@ profile and stays GPL-3.0-or-later, like archiso.
 
 The CLI lives in [kiln-package-manager](https://github.com/kilnlinux/kiln-package-manager).
 The distro pins its source as a submodule and installs it as a pacman package.
-A daily `kiln-update.timer` installs newer stable CLI release packages after
-checking GitHub's SHA-256 asset digest and the package identity. Pacman checks
-dependencies and owns every installed file. If newer libraries are needed,
-run `sudo pacman -Syu` before retrying the CLI update.
+A daily `kiln-update.timer` checks every installed `[kiln]` package against
+the latest stable GitHub release of the repository in its package URL. Newer
+release packages install in one pacman transaction after checking GitHub's
+SHA-256 asset digest and the package identity. Packages whose release has no
+matching `<name>-<version>-<arch>.pkg.tar.zst` asset are left alone. Pacman
+checks dependencies and owns every installed file. If newer libraries are
+needed, run `sudo pacman -Syu` before retrying the update.
 
-`kiln-update --check` checks the CLI, distro releases and distro source commits
-without installing anything. `sudo kiln-update --apply` updates only the CLI;
-it reports distro releases without replacing the running system. Cached notices
+`kiln-update --check` checks the installed Kiln packages, distro releases and
+distro source commits without installing anything. `sudo kiln-update --apply`
+updates only Kiln packages; it reports distro releases without replacing the
+running system. Cached notices
 appear at console login. Logs: `journalctl -u kiln-update.service`.
 Disable automatic checks with `sudo systemctl disable --now kiln-update.timer`.

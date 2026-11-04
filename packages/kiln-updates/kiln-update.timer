@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily kiln package update and Kiln Linux release check
+Description=Daily Kiln package updates and Kiln Linux release check
 
 [Timer]
 OnCalendar=daily

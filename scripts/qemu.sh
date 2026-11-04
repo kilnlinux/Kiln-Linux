@@ -19,7 +19,7 @@ command -v qemu-system-x86_64 >/dev/null || die "install qemu: sudo pacman -S qe
 mkdir -p "$Q"
 [[ -f $DISK ]] || qemu-img create -f qcow2 "$DISK" 20G >/dev/null
 
-args=(-m 2G -smp 2 -nic user,model=virtio-net-pci -vga virtio
+args=(-m 2G -smp 2 -nic "user,model=virtio-net-pci" -vga virtio
       -drive "file=$DISK,if=virtio,format=qcow2")
 if [[ -r /dev/kvm && -w /dev/kvm ]]; then
     args+=(-enable-kvm -cpu host)

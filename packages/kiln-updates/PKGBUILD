@@ -1,7 +1,7 @@
 pkgname=kiln-updates
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Automatic kiln package updates and Kiln Linux GitHub release checks'
+pkgdesc='Automatic Kiln package updates and Kiln Linux GitHub release checks'
 arch=('any')
 url='https://github.com/kilnlinux/Kiln-Linux'
 license=('MIT')

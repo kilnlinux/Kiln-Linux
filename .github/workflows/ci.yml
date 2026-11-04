@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git rust python shellcheck dialog github-cli
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Run scripts/test.sh as an unprivileged user
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          runuser -u builder -- scripts/test.sh
+      # The ISO is still built by hand; the release only gets kiln-updates for kiln-update.
+      - name: Attach kiln-updates to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$PWD"
+          (cd packages/kiln-updates && runuser -u builder -- makepkg --nodeps --noconfirm)
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+              gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          gh release upload "$GITHUB_REF_NAME" packages/kiln-updates/*.pkg.tar.zst --clobber

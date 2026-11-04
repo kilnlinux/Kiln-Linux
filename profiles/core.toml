@@ -11,5 +11,4 @@ official = [
     "nano",
     "less",
     "man-db",
-    "fastfetch",       # system summary with the Kiln logo
 ]

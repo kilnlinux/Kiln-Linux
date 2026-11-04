@@ -42,12 +42,10 @@ livecd-sounds
 diffutils
 foot-terminfo
 less
-man-db
-man-pages
 nano
 dialog
 sudo
 terminus-font
-tmux
-fastfetch
 usbutils
+man-db
+man-pages

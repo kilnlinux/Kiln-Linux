@@ -4,7 +4,7 @@
 #     entry with simulated keypresses; the live system fetches and runs it,
 #     which runs `kiln-install --config install.cfg` on a blank virtio disk
 #  2. boot the installed disk, log in on tty1 (twmx should start), open xterm,
-#     run fastfetch and kiln list
+#     run kiln list
 # Screenshots and serial logs land in build/e2e/. Needs qemu and edk2-ovmf.
 set -Eeuo pipefail
 cd "$(dirname "$0")/../.."

@@ -2,7 +2,11 @@
 
 ## Automated: `make test`
 
-No root, no VM, under a minute:
+No root, no VM, under a minute. CI (`.github/workflows/ci.yml`) runs it in an
+`archlinux:base-devel` container on every push and pull request; on a `v*`
+tag it also attaches `kiln-updates-*.pkg.tar.zst` to the GitHub release so
+`kiln-update` can update it. The ISO is still built and uploaded by hand.
+
 
 - twmx updater wrapper: configuration seeding and preservation, delegation to
   the updated upstream helper, error propagation and root refusal;
@@ -102,7 +106,8 @@ partitions in the installer.
       never started). twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
       bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
       battery modules hide on a machine without them; not yet on an installed system
-- [ ] kernels other than `linux` (`linux-lts`, `linux-zen`, `linux-hardened`)
+- [ ] kernels other than `linux` (`linux-lts`, `linux-zen`, `linux-hardened`), and several at once
+      (one boot entry each; dry-run only)
 - [ ] GRUB and Limine, on UEFI and on BIOS (`make run-bios`, then
       `make run-disk-bios`); dry-run with stubbed commands only: each writes
       the expected loader commands, pacman hook and kernel command line
