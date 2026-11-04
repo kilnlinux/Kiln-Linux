@@ -10,11 +10,12 @@ bad() { printf '\033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 t() { local name=$1; shift; if "$@" >/tmp/kiln-test.$$ 2>&1; then ok "$name"; else bad "$name"; sed 's/^/     /' /tmp/kiln-test.$$; fi; }
 
 t "installer: failure handling" python3 tests/installer.py
+t "twmx: user updater" python3 tests/twmx-update.py
 
 t "kiln: cargo test (unit + integration)" cargo test --quiet --manifest-path packages/kiln/Cargo.toml
 t "kiln: cargo clippy, no warnings" cargo clippy --quiet --manifest-path packages/kiln/Cargo.toml -- -D warnings
 
-shells=(packages/kiln-install/kiln-install scripts/*.sh archiso/kiln/profiledef.sh)
+shells=(packages/kiln-install/kiln-install scripts/*.sh archiso/kiln/profiledef.sh packages/twmx/PKGBUILD packages/twmx/twmx-update-kiln)
 for f in "${shells[@]}"; do t "bash -n $f" bash -n "$f"; done
 if command -v shellcheck >/dev/null; then
     t "shellcheck" shellcheck -S warning "${shells[@]}"
