@@ -1,0 +1,8 @@
+[Unit]
+Description=Update twmx from GitHub for the current user
+ConditionUser=!root
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/twmx-update
+NoNewPrivileges=true
