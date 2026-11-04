@@ -34,6 +34,7 @@ ROOT_PW=          # empty: root account locked, use sudo
 USER_NAME=
 USER_PW=
 DESKTOP=twmx      # a key of DESKTOPS below
+KERNEL=linux      # a key of KERNELS below
 EXTRAS=()         # extra profiles: audio, developer
 DISK=
 SCHEME=           # auto (erase DISK) or manual (ESP and ROOT as given)
@@ -60,6 +61,15 @@ DESKTOPS=(
     "plasma|KDE Plasma: desktop environment, Wayland|plasma|sddm|log in on the SDDM screen|-"
     "gnome|GNOME: desktop environment, Wayland|gnome|gdm|log in on the GDM screen|-"
     "none|None: command line only|-|-|log in on the console|-"
+)
+
+# Kernels from Arch's repositories: package | menu label. Each installs
+# /boot/vmlinuz-PACKAGE and /boot/initramfs-PACKAGE.img.
+KERNELS=(
+    "linux|Linux: the latest stable kernel (default)"
+    "linux-lts|LTS: long-term support, fewer changes"
+    "linux-zen|Zen: tuned for desktop responsiveness"
+    "linux-hardened|Hardened: security patches; some apps may break"
 )
 
 # desktop_field KEY N: field N (1-based) of KEY's DESKTOPS entry.
@@ -214,6 +224,13 @@ ask_desktop() {
     DESKTOP=$key
 }
 
+ask_kernel() {
+    local items=() e k
+    for e in "${KERNELS[@]}"; do items+=("${e%%|*}" "${e#*|}"); done
+    k=$(d --title Kernel --default-item "$KERNEL" --menu "Kernel to install:" 12 66 4 "${items[@]}") || return
+    KERNEL=$k
+}
+
 ask_extras() {
     local on_a=off on_d=off sel
     [[ " ${EXTRAS[*]} " == *" audio "* ]] && on_a=on
@@ -309,6 +326,7 @@ settings_problem() {
     esac
     [[ -n $USER_NAME && -n $USER_PW ]] || { echo "Create a user account first."; return; }
     desktop_field "$DESKTOP" 1 >/dev/null || { echo "Unknown desktop: $DESKTOP"; return; }
+    [[ " ${KERNELS[*]%%|*} " == *" $KERNEL "* ]] || { echo "KERNEL must be one of: ${KERNELS[*]%%|*}"; return; }
     for p in core "$(desktop_field "$DESKTOP" 3)" "${EXTRAS[@]}"; do
         [[ $p == - || -f $SHARE/profiles/$p.toml ]] || { echo "Missing profile $SHARE/profiles/$p.toml"; return; }
     done
@@ -435,7 +453,7 @@ partition_and_mount() {
 install_base() {
     # mkinitcpio and iptables named explicitly: they are the defaults pacman would
     # pick among several providers anyway, but this skips its "choose a provider" prompts.
-    local pkgs=(base linux linux-firmware mkinitcpio iptables dosfstools)
+    local pkgs=(base "$KERNEL" linux-firmware mkinitcpio iptables dosfstools)
     case $FS in
         ext4) pkgs+=(e2fsprogs) ;;
         btrfs) pkgs+=(btrfs-progs) ;;
@@ -603,8 +621,8 @@ timeout: 3
 
 /Kiln Linux
     protocol: linux
-    path: boot():/vmlinuz-linux
-    module_path: boot():/initramfs-linux.img
+    path: boot():/vmlinuz-$KERNEL
+    module_path: boot():/initramfs-$KERNEL.img
     cmdline: $1
 CONF
     local src=/usr/share/limine n
@@ -629,8 +647,8 @@ install_systemd_boot() {
     # One entry: Arch's linux preset no longer builds a fallback initramfs.
     cat >"$MNT/boot/loader/entries/kiln.conf" <<EOF
 title   Kiln Linux
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
+linux   /vmlinuz-$KERNEL
+initrd  /initramfs-$KERNEL.img
 options $options
 EOF
     # Updates systemd-boot on the ESP after systemd package upgrades.
@@ -644,8 +662,8 @@ validate() {
     check() {
         if "${@:2}" >/dev/null 2>&1; then echo "  ok    $1"; else echo "  FAIL  $1"; ok=0; fi
     }
-    check "/boot/vmlinuz-linux exists" test -s "$MNT/boot/vmlinuz-linux"
-    check "/boot/initramfs-linux.img exists" test -s "$MNT/boot/initramfs-linux.img"
+    check "/boot/vmlinuz-$KERNEL exists" test -s "$MNT/boot/vmlinuz-$KERNEL"
+    check "/boot/initramfs-$KERNEL.img exists" test -s "$MNT/boot/initramfs-$KERNEL.img"
     case $BOOTLOADER in
         systemd-boot) check "systemd-boot installed" arch-chroot "$MNT" bootctl --esp-path=/boot is-installed ;;
         grub) [[ $FIRMWARE == uefi ]] || check "GRUB BIOS core image" test -s "$MNT/boot/grub/i386-pc/core.img" ;;
@@ -713,6 +731,7 @@ summary() {
         printf 'Disk:        %s (root, formatted), %s (/boot%s)\n' "$ROOT" "$ESP" "$([[ $FORMAT_ESP == yes ]] && echo ", formatted")"
     fi
     printf 'Filesystem:  %s%s\n' "$FS" "$([[ $ENCRYPT == yes ]] && echo ", encrypted (LUKS2)")"
+    printf 'Kernel:      %s\n' "$KERNEL"
     printf 'Desktop:     %s\n' "$(desktop_field "$DESKTOP" 2)"
     printf 'Profiles:    core %s %s\n' "$(desktop_field "$DESKTOP" 3 | sed 's/^-$//')" "${EXTRAS[*]}"
     printf 'User:        %s (sudo); root %s\n' "$USER_NAME" "$([[ -n $ROOT_PW ]] && echo "password set" || echo locked)"
@@ -772,6 +791,7 @@ while true; do
         user       "User account  $(shown "$USER_NAME")" \
         desktop    "Desktop       $(desktop_field "$DESKTOP" 2)" \
         extras     "Extras        $(shown "${EXTRAS[*]}")" \
+        kernel     "Kernel        $KERNEL" \
         disk       "Disk          $disk_desc" \
         bootloader "Boot loader   $BOOTLOADER (${FIRMWARE^^})" \
         install    "Install") || { clear; exit 0; }
@@ -784,7 +804,8 @@ while true; do
         root) ask_root_password; next=user ;;
         user) ask_user; next=desktop ;;
         desktop) ask_desktop; next=extras ;;
-        extras) ask_extras; next=disk ;;
+        extras) ask_extras; next=kernel ;;
+        kernel) ask_kernel; next=disk ;;
         disk) ask_disk; next=install ;;
         bootloader) ask_bootloader; next=install ;;
         install)

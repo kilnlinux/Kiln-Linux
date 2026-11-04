@@ -65,6 +65,7 @@ order (arrow keys, Enter), then Install:
 | User account | your login, in `wheel`, with sudo |
 | Desktop | twmx (default), i3, Sway, Hyprland, XFCE, KDE Plasma, GNOME, or none |
 | Extras | PipeWire audio, developer tools |
+| Kernel | `linux` (default), `linux-lts`, `linux-zen` or `linux-hardened` |
 | Disk | erase a whole disk (1 GiB EFI partition + root), or partition with cfdisk and pick the EFI and root partitions; ext4 or btrfs; optional LUKS2 encryption of root (passphrase at every boot) |
 | Boot loader | systemd-boot (default on UEFI, UEFI only), GRUB (default on BIOS) or Limine |
 
@@ -79,6 +80,7 @@ DISK=/dev/vda SCHEME=auto FS=ext4 DESKTOP=twmx EXTRAS=(audio)
 USER_NAME=me USER_PW='change me' TIMEZONE=Europe/Berlin
 ENCRYPT=yes LUKS_PW='disk passphrase'   # optional
 BOOTLOADER=limine                       # optional: systemd-boot, grub, limine
+KERNEL=linux-lts                        # optional: linux, linux-lts, linux-zen, linux-hardened
 ```
 
 A locked root means systemd's emergency shell can't log in; boot with
