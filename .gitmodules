@@ -1,0 +1,3 @@
+[submodule "packages/kiln"]
+	path = packages/kiln
+	url = https://github.com/kilnlinux/kiln-package-manager.git
