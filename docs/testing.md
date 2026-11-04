@@ -4,6 +4,8 @@
 
 No root, no VM, under a minute:
 
+- installer failure handling with mocked commands: every failed stage stops
+  immediately, without touching disks;
 - kiln unit tests (manifest validation, planning rules, CLI parsing, state
   file round trip) and integration tests (the real binary against a fake
   `pacman` on `PATH`: plan buckets, unknown packages, idempotent apply, root
@@ -79,13 +81,19 @@ Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
 Validation refused to report success; the entry is gone now.
 
+Later, a user installed through the interactive dialog menus on a VM (ext4,
+twmx): the install finished, the system booted and login worked. That run
+showed kernel messages drawing over the progress box (now suppressed) and
+no desktop on login. After the installer gained the tty1 autostart lines, a
+reinstall from the rebuilt ISO confirmed that logging in on tty1 starts twmx.
+
 ## Not yet tested
 
-- [ ] the interactive dialog menus (the e2e test uses `--config`)
 - [ ] manual partitioning (cfdisk), btrfs, a root password
 - [ ] desktops other than twmx: i3, sway, Hyprland, XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
-- [ ] installer failure path (e.g. pull the network during pacstrap)
+- [ ] installer failure path under real faults (e.g. pull the network during
+      pacstrap); `tests/installer.py` covers each stage failing with mocked commands
 - [ ] `sudo pacman -Syu` on the installed system keeps Kiln's os-release
 - [ ] real hardware
 

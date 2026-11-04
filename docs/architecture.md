@@ -101,7 +101,7 @@ See [kiln.md](kiln.md) for usage. Design in brief:
 
 - **pacman is the only package database.** kiln asks pacman everything:
   `pacman -T` for "is this satisfied" (it understands provides and versions),
-  `-Qq` for installed names, `-Slq` for repository names, `-S`/`-Rs` for
+  `-Qq` for installed names, `-Slq` for repository names, `-S`/`-R` for
   changes. kiln never reads `/var/lib/pacman` itself.
 - **kiln's own state is small**: `/var/lib/kiln/state.toml` lists active
   profiles and, for each, the packages kiln itself installed. Packages that

@@ -19,6 +19,7 @@ case "$1" in
   -Qq|-Qqe) printf '%s\n' $FAKE_INSTALLED ;;
   -Slq) printf '%s\n' $FAKE_AVAILABLE ;;
   -Dk) echo "No database errors have been found!" ;;
+  -R) printf '%s\n' "$*" >> "$FAKE_TRANSACTIONS" ;;
   --version) echo " .--.   Pacman v9.9.9 - libalpm v1.0.0" ;;
   *) echo "fake pacman: unexpected $*" >&2; exit 99 ;;
 esac
@@ -71,6 +72,7 @@ impl Env {
             .env("KILN_STATE_FILE", self.dir.join("state.toml"))
             .env("FAKE_INSTALLED", installed)
             .env("FAKE_AVAILABLE", available)
+            .env("FAKE_TRANSACTIONS", self.dir.join("transactions"))
             .env("NO_COLOR", "1")
             .env_remove("SUDO_USER")
             .output()
@@ -131,7 +133,9 @@ fn apply_satisfied_and_active_is_a_no_op_without_root() {
     e.state("[profiles.dev]\nmanaged = []\n");
     let o = e.kiln(&["apply", "dev"], "git", "git");
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("satisfied, nothing to do"));
+    if !running_as_root() {
+        assert!(stdout(&o).contains("satisfied, nothing to do"));
+    }
 }
 
 #[test]
@@ -276,4 +280,68 @@ fn custom_profile_paths_work_for_purge_and_doctor() {
     );
     assert!(!o.status.success());
     assert!(stderr(&o).contains("cannot read active profile"));
+}
+
+#[test]
+fn apply_saves_absolute_custom_path_when_root() {
+    if !running_as_root() {
+        return;
+    }
+    let e = Env::new("save-custom-path");
+    let custom = e.dir.join("custom");
+    std::fs::create_dir_all(&custom).unwrap();
+    let path = custom.join("dev.toml");
+    std::fs::write(
+        &path,
+        "[profile]\nname='dev'\n[packages]\nofficial=['git']\n",
+    )
+    .unwrap();
+    let o = e.kiln(&["apply", path.to_str().unwrap(), "--yes"], "git", "");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let state: toml::Value =
+        toml::from_str(&std::fs::read_to_string(e.dir.join("state.toml")).unwrap()).unwrap();
+    assert_eq!(
+        state["profiles"]["dev"]["manifest"].as_str(),
+        path.canonicalize().unwrap().to_str()
+    );
+    assert_eq!(
+        state["profiles"]["dev"]["managed"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    let o = e.kiln(&["apply", path.to_str().unwrap(), "--yes"], "git", "");
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("satisfied, nothing to do"));
+}
+
+#[test]
+fn purge_transfers_shared_packages_then_removes_them_when_root() {
+    if !running_as_root() {
+        return;
+    }
+    let e = Env::new("transfer-purge");
+    e.profile("a", &["parent", "shared"]);
+    e.profile("b", &["shared", "manual"]);
+    e.state("[profiles.a]\nmanaged=['parent','shared']\n[profiles.b]\nmanaged=[]\n");
+    let o = e.kiln(
+        &["remove", "a", "--purge", "--yes"],
+        "parent shared manual",
+        "",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let state: toml::Value =
+        toml::from_str(&std::fs::read_to_string(e.dir.join("state.toml")).unwrap()).unwrap();
+    assert!(state["profiles"].get("a").is_none());
+    assert_eq!(
+        state["profiles"]["b"]["managed"].as_array().unwrap(),
+        &[toml::Value::String("shared".into())]
+    );
+    let o = e.kiln(&["remove", "b", "--purge", "--yes"], "shared manual", "");
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        std::fs::read_to_string(e.dir.join("transactions")).unwrap(),
+        "-R --noconfirm -- parent\n-R --noconfirm -- shared\n"
+    );
 }

@@ -105,13 +105,16 @@ Only packages that:
 3. are still installed.
 
 pacman then removes them with `-R` and shows its usual confirmation.
-Dependencies stay installed so packages needed by other active profiles are protected. If
-another package still depends on one of them, pacman refuses the whole
+Dependencies stay installed so packages needed by other active profiles
+are protected. If another package still depends on one of them, pacman refuses the whole
 transaction and kiln keeps the profile active.
 
 One case to know: if kiln installed a package for a profile and you later
 also started using it directly, kiln still counts it as the profile's. Keep
 it by listing it in another profile, or answer "n" at pacman's prompt.
+
+Shared packages remain managed by the remaining profiles, so removing the
+last profile can still purge them.
 
 ### State
 
@@ -119,8 +122,14 @@ it by listing it in another profile, or answer "n" at pacman's prompt.
 
 ```toml
 [profiles.twmx]
+manifest = "/usr/share/kiln/profiles/twmx.toml"
 managed = ["dmenu", "dunst", "ttf-dejavu", "twmx", "xorg-server", "xorg-xinit", "xterm"]
 ```
+
+The absolute manifest path is saved when applying a profile, including
+custom files outside the search directories. Keep that file available:
+purge and doctor read its current contents. Older state files without a
+path still use the profile search directories.
 
 Deleting this file makes kiln forget active profiles; it never affects
 installed packages.
