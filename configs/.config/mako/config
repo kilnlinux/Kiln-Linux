@@ -1,0 +1,7 @@
+# Kiln Linux mako config. Reference: man 5 mako
+font=DejaVu Sans 10
+background-color=#1a1a1aee
+text-color=#ededed
+border-color=#a4471f
+border-size=2
+default-timeout=5000

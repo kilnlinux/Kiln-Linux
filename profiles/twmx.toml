@@ -1,0 +1,19 @@
+# twmx desktop (the Kiln default): X11 with the twmx tiling window manager. Apply on top of core.
+# Start it from a TTY with `startx` (runs ~/.xinitrc).
+[profile]
+name = "twmx"
+description = "twmx X11 desktop: xterm, dmenu, dunst"
+
+[packages]
+official = [
+    "twmx",           # window manager, from Kiln's [kiln] repository
+    "xorg-server",
+    "xorg-xinit",     # startx
+    "xorg-xrdb",      # loads ~/.Xresources
+    "xorg-xsetroot",  # background color, cursor
+    "xorg-xrandr",    # monitor layout (xrandr)
+    "xterm",          # terminal (Super+Return)
+    "dmenu",          # launcher (Super+d)
+    "dunst",          # notifications
+    "ttf-dejavu",     # font for xterm, dmenu, dunst
+]

@@ -1,0 +1,11 @@
+<!-- BIOS boot menu background (syslinux, 640x480). Regenerate the PNG with:
+     rsvg-convert branding/splash.svg -o archiso/kiln/syslinux/splash.png -->
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#1A1A1A"/>
+  <defs><mask id="m"><rect width="128" height="128" fill="#fff"/>
+    <g transform="rotate(-14 64 64)" fill="#000"><rect x="-20" y="54" width="170" height="9"/><rect x="-20" y="80" width="170" height="9"/></g>
+  </mask></defs>
+  <g transform="translate(272 28) scale(0.75)">
+    <path d="M64 8 L120 116 H8 Z" fill="#EDEDED" mask="url(#m)"/>
+  </g>
+</svg>

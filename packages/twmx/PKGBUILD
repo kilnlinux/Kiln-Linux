@@ -1,0 +1,40 @@
+# Kiln Linux package for twmx, the default window manager of the Desktop profile.
+# Built by scripts/build.sh into the [kiln] repository shipped on the ISO.
+pkgname=twmx
+pkgver=2.1
+pkgrel=1
+pkgdesc="Small, fast tiling window manager for X11, grown out of TinyWM (Kiln Linux build)"
+arch=('x86_64')
+url="https://github.com/arcbaseproject/twmx"
+license=('Unlicense')
+depends=('libx11' 'libxrandr')
+makedepends=('git' 'pkgconf')
+options=('!debug')
+# Pinned commit: v2.1 plus the xsession file installed by `make install`.
+_commit=da855828e57a841950da60097580e9537c06efaf
+source=("git+https://github.com/arcbaseproject/twmx.git#commit=${_commit}"
+        "config.h")
+sha256sums=('SKIP'
+            '6805adf90e3684e62c7539a915e2d72f3b6ba9f85c98c670e56e9c01b7cefd99')
+
+prepare() {
+    # twmx is configured at compile time; use Kiln's config.h.
+    cp "${srcdir}/config.h" "${srcdir}/twmx/config.h"
+}
+
+build() {
+    cd twmx
+    make PREFIX=/usr
+}
+
+check() {
+    cd twmx
+    # The regression tests need an X server; only check the binary runs.
+    ./twmx -v
+}
+
+package() {
+    cd twmx
+    make PREFIX=/usr DESTDIR="${pkgdir}" install
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

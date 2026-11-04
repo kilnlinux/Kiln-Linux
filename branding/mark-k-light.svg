@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <g fill="#EDEDED">
+    <path d="M14 10 H40 V118 H14 Z"/>
+    <path d="M50 62 L94 10 H120 L76 62 Z"/>
+    <path d="M50 70 H76 L120 118 H94 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,610 @@
+#!/usr/bin/env bash
+# kiln-install: install Kiln Linux from the live ISO, in the style of Void's
+# installer: a main menu of settings you can visit in any order, then Install.
+#
+#   kiln-install                  menu-driven, with dialog
+#   kiln-install --config FILE    unattended: FILE sets the variables below
+#                                 (bash syntax), then the install runs as-is
+#
+# The install itself: GPT disk (or partitions you made with cfdisk), pacstrap
+# of base + kernel, Kiln profiles applied with `kiln apply` inside the new
+# system, systemd-boot (UEFI only for now), then checks of the result. Nothing
+# reports success unless those checks pass.
+
+set -uo pipefail
+
+readonly MNT=/mnt
+readonly SHARE=/usr/share/kiln
+readonly LOG=/tmp/kiln-install.log
+readonly BT="Kiln Linux installer"
+readonly MIN_BYTES=$((8 * 1024 * 1024 * 1024))
+
+# Settings. --config files set these.
+KEYMAP=us
+HOSTNAME_NEW=kiln
+LOCALE=en_US.UTF-8
+TIMEZONE=UTC
+ROOT_PW=          # empty: root account locked, use sudo
+USER_NAME=
+USER_PW=
+DESKTOP=twmx      # a key of DESKTOPS below
+EXTRAS=()         # extra profiles: audio, developer
+DISK=
+SCHEME=           # auto (erase DISK) or manual (ESP and ROOT as given)
+ESP=
+ROOT=
+FORMAT_ESP=yes
+FS=ext4           # root filesystem: ext4 or btrfs
+
+UNATTENDED=
+
+# Desktop choices: key | menu label | kiln profile ("-": none) |
+# display manager to enable ("-": none) | what the user does after reboot |
+# command a tty1 login runs to start the desktop ("-": none).
+DESKTOPS=(
+    "twmx|twmx: tiling, X11 (Kiln default)|twmx|-|log in on tty1 and twmx starts|startx"
+    "i3|i3: tiling, X11|i3|-|log in on tty1 and i3 starts|startx"
+    "sway|Sway: tiling, Wayland|sway|-|log in on tty1 and sway starts|sway"
+    "hyprland|Hyprland: tiling, Wayland, animated|hyprland|-|log in on tty1 and Hyprland starts|Hyprland"
+    "xfce|XFCE: desktop environment, X11|xfce|lightdm|log in on the LightDM screen|-"
+    "plasma|KDE Plasma: desktop environment, Wayland|plasma|sddm|log in on the SDDM screen|-"
+    "gnome|GNOME: desktop environment, Wayland|gnome|gdm|log in on the GDM screen|-"
+    "none|None: command line only|-|-|log in on the console|-"
+)
+
+# desktop_field KEY N: field N (1-based) of KEY's DESKTOPS entry.
+desktop_field() {
+    local e
+    for e in "${DESKTOPS[@]}"; do
+        if [[ ${e%%|*} == "$1" ]]; then
+            cut -d'|' -f"$2" <<<"$e"
+            return 0
+        fi
+    done
+    return 1
+}
+
+d() { dialog --stdout --backtitle "$BT" "$@"; }
+
+msg() {
+    if [[ -n $UNATTENDED ]]; then printf '%s\n' "$*"; else d --msgbox "$*" 10 64; fi
+}
+
+die() {
+    if [[ -n $UNATTENDED ]]; then
+        printf 'kiln-install: %s\n' "$*" >&2
+    else
+        d --title Error --msgbox "$*" 10 64
+        clear
+    fi
+    exit 1
+}
+
+# Full path of the Nth partition of a disk (sda1, nvme0n1p1, ...).
+part() { lsblk -lnpo NAME,TYPE "$1" | awk '$2 == "part" { print $1 }' | sed -n "${2}p"; }
+
+# The disk the ISO is running from, if any, so it is never offered.
+live_disk() {
+    local src pk
+    src=$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null) || return 0
+    pk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -n1)
+    if [[ -n $pk ]]; then
+        printf '/dev/%s\n' "$pk"
+    elif [[ $(lsblk -dno TYPE "$src" 2>/dev/null) == disk ]]; then
+        printf '%s\n' "$src"
+    fi
+}
+
+online() { getent hosts archlinux.org >/dev/null; }
+
+# --- Menu items --------------------------------------------------------------
+
+ask_keymap() {
+    local k
+    # shellcheck disable=SC2046
+    k=$(d --title Keyboard --default-item "$KEYMAP" --no-items \
+        --menu "Console keyboard layout:" 20 50 12 $(localectl list-keymaps)) || return
+    KEYMAP=$k
+    loadkeys "$KEYMAP" 2>/dev/null
+}
+
+ask_network() {
+    if online; then
+        d --title Network --msgbox "Connected to the internet.\n\nEthernet connects automatically." 8 50
+        return
+    fi
+    d --title Network --yesno "Not connected. Ethernet connects automatically over DHCP.\n\nOpen iwctl to connect to Wi-Fi?\n(In iwctl: station wlan0 connect <network>, then exit.)" 11 64 || return
+    clear
+    iwctl
+    online || d --title Network --msgbox "Still not connected." 6 40
+}
+
+ask_hostname() {
+    local h
+    while h=$(d --title Hostname --inputbox "Name for this computer:" 8 50 "$HOSTNAME_NEW"); do
+        if [[ $h =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            HOSTNAME_NEW=$h
+            return
+        fi
+        d --msgbox "Use lowercase letters, digits and hyphens, not at the start or end." 6 70
+    done
+}
+
+ask_locale() {
+    local l
+    # shellcheck disable=SC2046
+    l=$(d --title Locale --default-item "$LOCALE" --no-items \
+        --menu "System language and character set:" 20 50 12 \
+        $(awk '$2 == "UTF-8" { print $1 }' /usr/share/i18n/SUPPORTED)) || return
+    LOCALE=$l
+}
+
+ask_timezone() {
+    local z=/usr/share/zoneinfo region city
+    # shellcheck disable=SC2046
+    region=$(d --title Timezone --no-items --menu "Region:" 20 50 12 UTC \
+        $(cd "$z" && find . -mindepth 1 -maxdepth 1 -type d -name '[A-Z]*' ! -name Etc -printf '%f\n' | sort)) || return
+    if [[ $region == UTC ]]; then
+        TIMEZONE=UTC
+        return
+    fi
+    # shellcheck disable=SC2046
+    city=$(d --title Timezone --no-items --menu "City in $region:" 20 50 12 \
+        $(cd "$z/$region" && find . -type f -printf '%P\n' | sort)) || return
+    TIMEZONE=$region/$city
+}
+
+# ask_password TITLE TEXT: ask twice, print it. Fails on cancel.
+ask_password() {
+    local a b
+    while true; do
+        a=$(d --insecure --title "$1" --passwordbox "$2" 9 56) || return 1
+        b=$(d --insecure --title "$1" --passwordbox "Again, to confirm:" 8 56) || return 1
+        if [[ -z $a ]]; then
+            d --msgbox "The password can't be empty." 6 40
+        elif [[ $a != "$b" ]]; then
+            d --msgbox "The passwords don't match." 6 40
+        else
+            printf '%s' "$a"
+            return 0
+        fi
+    done
+}
+
+ask_root_password() {
+    if d --title "Root password" --yes-label "Lock root" --no-label "Set password" --yesno \
+        "Lock the root account? Your user gets sudo either way.\n\nA root password lets you log in to systemd's emergency shell." 10 60; then
+        ROOT_PW=
+    else
+        local p
+        p=$(ask_password "Root password" "Password for the root account:") && ROOT_PW=$p
+    fi
+}
+
+ask_user() {
+    local u p
+    while u=$(d --title "User account" --inputbox \
+        "Login name for your account. It can administer the system with sudo." 9 60 "$USER_NAME"); do
+        if [[ $u =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && ! getent passwd "$u" >/dev/null; then
+            p=$(ask_password "User account" "Password for $u:") || return
+            USER_NAME=$u USER_PW=$p
+            return
+        fi
+        d --msgbox "Use lowercase letters, digits, - and _, starting with a letter, and not a system account name." 7 66
+    done
+}
+
+ask_desktop() {
+    local items=() e key
+    for e in "${DESKTOPS[@]}"; do
+        items+=("${e%%|*}" "$(cut -d'|' -f2 <<<"$e")")
+    done
+    key=$(d --title Desktop --default-item "$DESKTOP" \
+        --menu "Desktop to install. You can add or switch later with kiln." 18 66 8 "${items[@]}") || return
+    DESKTOP=$key
+}
+
+ask_extras() {
+    local on_a=off on_d=off sel
+    [[ " ${EXTRAS[*]} " == *" audio "* ]] && on_a=on
+    [[ " ${EXTRAS[*]} " == *" developer "* ]] && on_d=on
+    sel=$(d --title Extras --separate-output --checklist "Extra Kiln profiles (space to toggle):" 11 66 2 \
+        audio "PipeWire audio" "$on_a" \
+        developer "git, base-devel (gcc, make), gdb" "$on_d") || return
+    EXTRAS=()
+    [[ -z $sel ]] || mapfile -t EXTRAS <<<"$sel"
+}
+
+ask_disk() {
+    local items=() name size model live
+    live=$(live_disk)
+    while read -r name size model; do
+        [[ $name == "$live" || $name == /dev/zram* ]] && continue
+        items+=("$name" "$size ${model:-}")
+    done < <(lsblk -dpno NAME,SIZE,MODEL -e 1,7,11)
+    ((${#items[@]})) || { d --msgbox "No disks found." 6 30; return; }
+    name=$(d --title Disk --menu "Disk to install to:${live:+\n(The install medium, $live, is not listed.)}" 15 64 6 "${items[@]}") || return
+    DISK=$name
+    if ! check_disk_usable; then DISK=; return; fi
+
+    SCHEME=$(d --title Partitions --menu "How to partition $DISK:" 12 72 2 \
+        auto "Erase the whole disk: 1 GiB EFI partition + root" \
+        manual "Edit partitions with cfdisk, then choose them") || { DISK=; return; }
+    ESP= ROOT= FORMAT_ESP=yes
+    if [[ $SCHEME == manual ]]; then
+        cfdisk "$DISK"
+        local parts=() fstype
+        while read -r name size fstype; do
+            parts+=("$name" "$size ${fstype:-}")
+        done < <(lsblk -lnpo NAME,SIZE,FSTYPE,TYPE "$DISK" | awk '$NF == "part" { NF--; print }')
+        ((${#parts[@]} >= 4)) || { d --msgbox "Make at least two partitions: an EFI system partition and a root." 7 60; DISK=; return; }
+        ESP=$(d --title Partitions --menu "EFI system partition (FAT32, mounted at /boot, 512 MiB or more):" 15 64 6 "${parts[@]}") || { DISK=; return; }
+        ROOT=$(d --title Partitions --menu "Root partition (will be formatted):" 15 60 6 "${parts[@]}") || { DISK=; return; }
+        [[ $ESP != "$ROOT" ]] || { d --msgbox "The EFI and root partitions must be different." 6 56; DISK=; return; }
+        if d --title Partitions --defaultno --yesno \
+            "Format $ESP?\n\nSay no to keep it, for example to share it with another operating system." 9 64; then
+            FORMAT_ESP=yes
+        else
+            FORMAT_ESP=no
+        fi
+    fi
+    FS=$(d --title Filesystem --default-item "$FS" --menu "Root filesystem:" 10 56 2 \
+        ext4 "simple and robust" btrfs "checksums, compression") || FS=ext4
+}
+
+# --- Checks ------------------------------------------------------------------
+
+# Prints why DISK can't be used; prints nothing if it can.
+disk_problem() {
+    if [[ ! -b $DISK ]]; then echo "Choose a disk first."
+    elif [[ $(lsblk -dnro TYPE "$DISK") != disk ]]; then echo "$DISK is not a whole disk."
+    elif [[ $DISK == "$(live_disk)" ]]; then echo "$DISK is the install medium."
+    elif [[ -n $(lsblk -nrpo MOUNTPOINTS "$DISK" | tr -d '[:space:]') ]]; then
+        echo "$DISK has mounted filesystems or swap. Unmount them first (umount -R $MNT)."
+    elif (($(lsblk -bdno SIZE "$DISK") < MIN_BYTES)); then echo "$DISK is smaller than 8 GiB."
+    fi
+}
+
+check_disk_usable() {
+    local p
+    p=$(disk_problem)
+    [[ -z $p ]] && return 0
+    msg "$p"
+    return 1
+}
+
+# Prints the first problem with the settings; prints nothing if ready.
+settings_problem() {
+    local p
+    if [[ ! -d /sys/firmware/efi/efivars ]]; then
+        echo "This computer started in BIOS mode. kiln-install supports UEFI only for now."; return
+    fi
+    [[ -n $USER_NAME && -n $USER_PW ]] || { echo "Create a user account first."; return; }
+    desktop_field "$DESKTOP" 1 >/dev/null || { echo "Unknown desktop: $DESKTOP"; return; }
+    for p in core "$(desktop_field "$DESKTOP" 3)" "${EXTRAS[@]}"; do
+        [[ $p == - || -f $SHARE/profiles/$p.toml ]] || { echo "Missing profile $SHARE/profiles/$p.toml"; return; }
+    done
+    [[ $FS == ext4 || $FS == btrfs ]] || { echo "FS must be ext4 or btrfs."; return; }
+    p=$(disk_problem)
+    [[ -z $p ]] || { echo "$p"; return; }
+    case $SCHEME in
+        auto) ;;
+        manual)
+            for p in "$ESP" "$ROOT"; do
+                [[ -b $p && $(lsblk -dnro TYPE "$p") == part && $(lsblk -dnpro PKNAME "$p") == "$DISK" ]] ||
+                    { echo "Choose partitions on $DISK."; return; }
+            done
+            [[ $ESP != "$ROOT" ]] || { echo "The EFI and root partitions must be different."; return; }
+            [[ $FORMAT_ESP == yes || $FORMAT_ESP == no ]] || { echo "FORMAT_ESP must be yes or no."; return; }
+            ;;
+        *) echo "Choose how to partition the disk."; return ;;
+    esac
+    online || { echo "No internet connection (see Network)."; return; }
+    systemctl is-active -q pacman-init.service || echo "The pacman keyring is still initializing; try again in a moment."
+}
+
+# --- Install -----------------------------------------------------------------
+# install_all runs in a subshell with -e: any failing command stops it, and
+# do_install reports the failure. Output goes to the screen and the log.
+
+run() { printf '$ %s\n' "$*"; "$@"; }
+
+partition_and_mount() {
+    if [[ $SCHEME == auto ]]; then
+        run wipefs -a "$DISK"
+        # GPT: 1 GiB EFI System Partition (U), then Linux filesystem (L).
+        printf 'label: gpt\n,1GiB,U\n,,L\n' | run sfdisk --wipe always --wipe-partitions always "$DISK"
+        udevadm settle
+        ESP=$(part "$DISK" 1) ROOT=$(part "$DISK" 2)
+        FORMAT_ESP=yes
+        [[ -b $ESP && -b $ROOT ]] || { echo "partitions did not appear on $DISK"; return 1; }
+    fi
+    if [[ $FORMAT_ESP == yes ]]; then run mkfs.fat -F 32 -n KILN_ESP "$ESP"; fi
+    case $FS in
+        ext4) run mkfs.ext4 -F -L kiln "$ROOT" ;;
+        btrfs) run mkfs.btrfs -f -L kiln "$ROOT" ;;
+    esac
+    # -t: no probing, which makes the kernel log "couldn't mount as ext2/ext3".
+    run mount -t "$FS" "$ROOT" "$MNT"
+    # umask 0077: the ESP holds the boot loader random seed; keep it root-only.
+    run mount --mkdir -t vfat -o fmask=0077,dmask=0077 "$ESP" "$MNT/boot"
+}
+
+install_base() {
+    # mkinitcpio and iptables named explicitly: they are the defaults pacman would
+    # pick among several providers anyway, but this skips its "choose a provider" prompts.
+    local pkgs=(base linux linux-firmware mkinitcpio iptables dosfstools)
+    case $FS in
+        ext4) pkgs+=(e2fsprogs) ;;
+        btrfs) pkgs+=(btrfs-progs) ;;
+    esac
+    # CPU microcode; mkinitcpio's default "microcode" hook puts it in the initramfs.
+    if grep -q GenuineIntel /proc/cpuinfo; then pkgs+=(intel-ucode); fi
+    if grep -q AuthenticAMD /proc/cpuinfo; then pkgs+=(amd-ucode); fi
+    # -K: a fresh pacman keyring in the target, not a copy of the live one.
+    run pacstrap -K "$MNT" "${pkgs[@]}"
+    genfstab -U "$MNT" >>"$MNT/etc/fstab"
+    echo "fstab:"
+    grep -v '^#' "$MNT/etc/fstab" | sed '/^$/d'
+}
+
+install_kiln_files() {
+    install -Dm755 "$(command -v kiln)" "$MNT/usr/local/bin/kiln"
+    mkdir -p "$MNT$SHARE"
+    cp -r "$SHARE/profiles" "$SHARE/repo" "$MNT$SHARE/"
+    install -m644 "$SHARE/logo" "$MNT$SHARE/logo"
+    install -Dm644 /etc/xdg/fastfetch/config.jsonc "$MNT/etc/xdg/fastfetch/config.jsonc"
+    # Home skeleton (.xinitrc, .Xresources, .config); useradd copies it to the user.
+    cp -rT "$SHARE/skel" "$MNT/etc/skel"
+    install -Dm644 /etc/kiln/os-release "$MNT/etc/kiln/os-release"
+    install -Dm644 /etc/pacman.d/hooks/kiln-os-release.hook "$MNT/etc/pacman.d/hooks/kiln-os-release.hook"
+    cp -f /etc/kiln/os-release "$MNT/usr/lib/os-release"
+    # Kiln's own packages (twmx) come from this local repository.
+    # shortcut: the repo is a copy from the ISO, so these packages update only with a new Kiln release; host it online once there are users.
+    cat >>"$MNT/etc/pacman.conf" <<'CONF'
+
+# Kiln Linux packages (twmx), shipped with the install medium. Local and
+# unsigned: the files are root-owned on this disk.
+[kiln]
+SigLevel = Optional TrustAll
+Server = file:///usr/share/kiln/repo
+CONF
+    run arch-chroot "$MNT" pacman -Syu --noconfirm # -u: never a partial upgrade
+}
+
+configure_system() {
+    run arch-chroot "$MNT" ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+    run arch-chroot "$MNT" hwclock --systohc
+    grep -m1 "^${LOCALE//./\\.} " /usr/share/i18n/SUPPORTED >>"$MNT/etc/locale.gen"
+    run arch-chroot "$MNT" locale-gen
+    printf 'LANG=%s\n' "$LOCALE" >"$MNT/etc/locale.conf"
+    printf 'KEYMAP=%s\n' "$KEYMAP" >"$MNT/etc/vconsole.conf"
+    printf '%s\n' "$HOSTNAME_NEW" >"$MNT/etc/hostname"
+    printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s\n' "$HOSTNAME_NEW" >"$MNT/etc/hosts"
+    # Clock sync (part of systemd, not enabled by Arch by default).
+    run arch-chroot "$MNT" systemctl enable systemd-timesyncd.service
+}
+
+apply_profiles() {
+    local p dm
+    for p in core "$(desktop_field "$DESKTOP" 3)" "${EXTRAS[@]}"; do
+        [[ $p == - ]] && continue
+        run arch-chroot "$MNT" kiln apply "$p" --yes
+    done
+    # kiln never enables services; the installer does, for what it installed.
+    run arch-chroot "$MNT" systemctl enable NetworkManager.service
+    dm=$(desktop_field "$DESKTOP" 4)
+    if [[ $dm != - ]]; then run arch-chroot "$MNT" systemctl enable "$dm.service"; fi
+    # ~/.xinitrc starts twmx; point it at the chosen X11 window manager.
+    if [[ $DESKTOP == i3 ]]; then sed -i 's/^exec twmx$/exec i3/' "$MNT/etc/skel/.xinitrc"; fi
+    # Window managers have no login screen: start the desktop on a tty1 login.
+    local start
+    start=$(desktop_field "$DESKTOP" 6)
+    if [[ $start != - ]]; then
+        cat >>"$MNT/etc/skel/.bash_profile" <<PROFILE
+
+# Kiln Linux: start the desktop when logging in on tty1.
+# Delete these lines to stay on the console; other ttys (Ctrl+Alt+F2) never start it.
+if [ -z "\$DISPLAY" ] && [ -z "\$WAYLAND_DISPLAY" ] && [ "\$(tty)" = /dev/tty1 ]; then
+    exec $start
+fi
+PROFILE
+    fi
+}
+
+create_user() {
+    run arch-chroot "$MNT" useradd -m -G wheel -s /bin/bash "$USER_NAME"
+    # Passwords via stdin, never on a command line (visible in ps).
+    printf '%s:%s\n' "$USER_NAME" "$USER_PW" | arch-chroot "$MNT" chpasswd
+    if [[ -n $ROOT_PW ]]; then
+        printf 'root:%s\n' "$ROOT_PW" | arch-chroot "$MNT" chpasswd
+    else
+        run arch-chroot "$MNT" passwd -l root
+    fi
+    install -Dm440 /dev/stdin "$MNT/etc/sudoers.d/10-wheel" <<<'%wheel ALL=(ALL:ALL) ALL'
+    run arch-chroot "$MNT" visudo -cf /etc/sudoers.d/10-wheel
+}
+
+install_bootloader() {
+    local uuid
+    uuid=$(findmnt -no UUID "$MNT")
+    [[ -n $uuid ]] || { echo "cannot determine the root filesystem UUID"; return 1; }
+    # Regenerate the initramfs now that vconsole.conf exists (sd-vconsole hook).
+    run arch-chroot "$MNT" mkinitcpio -P
+    run arch-chroot "$MNT" bootctl install --esp-path=/boot
+    printf 'default kiln.conf\ntimeout 3\neditor no\n' >"$MNT/boot/loader/loader.conf"
+    # One entry: Arch's linux preset no longer builds a fallback initramfs.
+    cat >"$MNT/boot/loader/entries/kiln.conf" <<EOF
+title   Kiln Linux
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+options root=UUID=$uuid rw
+EOF
+    # Updates systemd-boot on the ESP after systemd package upgrades.
+    run arch-chroot "$MNT" systemctl enable systemd-boot-update.service
+}
+
+# Check the result instead of assuming it. Fails if any check fails.
+validate() {
+    local uuid ok=1
+    uuid=$(findmnt -no UUID "$MNT")
+    check() {
+        if "${@:2}" >/dev/null 2>&1; then echo "  ok    $1"; else echo "  FAIL  $1"; ok=0; fi
+    }
+    check "/boot/vmlinuz-linux exists" test -s "$MNT/boot/vmlinuz-linux"
+    check "/boot/initramfs-linux.img exists" test -s "$MNT/boot/initramfs-linux.img"
+    check "systemd-boot installed" arch-chroot "$MNT" bootctl --esp-path=/boot is-installed
+    check "fallback loader EFI/BOOT/BOOTX64.EFI" test -s "$MNT/boot/EFI/BOOT/BOOTX64.EFI"
+    check "boot entry points at root UUID" grep -q "root=UUID=$uuid" "$MNT/boot/loader/entries/kiln.conf"
+    check "fstab mounts root by UUID" grep -Eq "^UUID=$uuid[[:space:]]+/[[:space:]]" "$MNT/etc/fstab"
+    check "fstab mounts /boot" grep -Eq '^[^#][^[:space:]]*[[:space:]]+/boot[[:space:]]' "$MNT/etc/fstab"
+    check "user $USER_NAME exists" arch-chroot "$MNT" id -u "$USER_NAME"
+    check "os-release says Kiln Linux" grep -q '^ID=kiln' "$MNT/usr/lib/os-release"
+    check "kiln doctor passes" arch-chroot "$MNT" kiln doctor
+    ((ok))
+}
+
+install_all() {
+    set -Eeo pipefail
+    trap 'echo "FAILED: line $LINENO: $BASH_COMMAND"' ERR
+    echo "== Partitioning and formatting";   partition_and_mount
+    echo "== Installing the base system";    install_base
+    echo "== Adding Kiln";                   install_kiln_files
+    echo "== Configuring";                   configure_system
+    echo "== Installing profiles";           apply_profiles
+    echo "== Creating accounts";             create_user
+    echo "== Installing the boot loader";    install_bootloader
+    echo "== Checking the installed system"; validate
+    sync
+    run umount -R "$MNT"
+}
+
+# Run install_all, logging everything. Returns its status.
+do_install() {
+    : >"$LOG"
+    if mountpoint -q "$MNT"; then
+        echo "$MNT is already mounted; unmount it first (umount -R $MNT)." | tee -a "$LOG"
+        return 1
+    fi
+    # Keep kernel messages from drawing over the screen; only errors get through.
+    local level rc
+    level=$(cut -f1 /proc/sys/kernel/printk)
+    dmesg --console-level err 2>/dev/null || true
+    if [[ -n $UNATTENDED ]]; then
+        (install_all) 2>&1 | tee -a "$LOG"
+    else
+        (install_all) 2>&1 | tee -a "$LOG" |
+            dialog --backtitle "$BT" --title "Installing Kiln Linux (log: $LOG)" --progressbox 22 78
+    fi
+    rc=${PIPESTATUS[0]}
+    dmesg --console-level "$level" 2>/dev/null || true
+    return "$rc"
+}
+
+summary() {
+    if [[ $SCHEME == auto ]]; then
+        printf 'Disk:        ERASE all of %s\n' "$DISK"
+    else
+        printf 'Disk:        %s (root, formatted), %s (EFI%s)\n' "$ROOT" "$ESP" "$([[ $FORMAT_ESP == yes ]] && echo ", formatted")"
+    fi
+    printf 'Filesystem:  %s\n' "$FS"
+    printf 'Desktop:     %s\n' "$(desktop_field "$DESKTOP" 2)"
+    printf 'Profiles:    core %s %s\n' "$(desktop_field "$DESKTOP" 3 | sed 's/^-$//')" "${EXTRAS[*]}"
+    printf 'User:        %s (sudo); root %s\n' "$USER_NAME" "$([[ -n $ROOT_PW ]] && echo "password set" || echo locked)"
+    printf 'Hostname:    %s\n' "$HOSTNAME_NEW"
+    printf 'Keyboard:    %s; locale %s; time zone %s\n' "$KEYMAP" "$LOCALE" "$TIMEZONE"
+    printf 'Boot loader: systemd-boot (UEFI)\n'
+    printf '\nAfter installing: reboot, then %s.\n' "$(desktop_field "$DESKTOP" 5)"
+}
+
+# --- Main --------------------------------------------------------------------
+
+((EUID == 0)) || { echo "kiln-install: run as root" >&2; exit 1; }
+for c in dialog pacstrap genfstab arch-chroot sfdisk cfdisk wipefs mkfs.fat mkfs.ext4 mkfs.btrfs lsblk findmnt kiln; do
+    command -v "$c" >/dev/null || { echo "kiln-install: missing command: $c" >&2; exit 1; }
+done
+[[ -d $SHARE/profiles && -f $SHARE/repo/kiln.db ]] || { echo "kiln-install: missing $SHARE/profiles or $SHARE/repo" >&2; exit 1; }
+
+if [[ ${1-} == --config ]]; then
+    [[ -r ${2-} ]] || { echo "usage: kiln-install --config FILE" >&2; exit 1; }
+    UNATTENDED=1
+    # shellcheck disable=SC1090
+    . "$2"
+    for ((i = 0; i < 60; i++)); do
+        systemctl is-active -q pacman-init.service && break
+        sleep 1
+    done
+    problem=$(settings_problem)
+    [[ -z $problem ]] || die "$problem"
+    summary
+    if do_install; then
+        echo "Kiln Linux is installed on $DISK."
+        exit 0
+    fi
+    echo "Installation FAILED. Kiln Linux is NOT installed. Log: $LOG" >&2
+    exit 1
+fi
+
+shown() { if [[ -n $1 ]]; then printf '%s' "$1"; else printf '(not set)'; fi; }
+
+next=keyboard
+while true; do
+    disk_desc="(not set)"
+    [[ -n $DISK && $SCHEME == auto ]] && disk_desc="erase $DISK, $FS"
+    [[ -n $DISK && $SCHEME == manual ]] && disk_desc="$ROOT + $ESP, $FS"
+    net=$(online && echo connected || echo "not connected")
+    choice=$(d --title "Kiln Linux" --cancel-label Exit --default-item "$next" \
+        --menu "Set each item, then choose Install." 21 70 13 \
+        keyboard   "Keyboard      $KEYMAP" \
+        network    "Network       $net" \
+        hostname   "Hostname      $HOSTNAME_NEW" \
+        locale     "Locale        $LOCALE" \
+        timezone   "Timezone      $TIMEZONE" \
+        root       "Root          $([[ -n $ROOT_PW ]] && echo "password set" || echo "locked (use sudo)")" \
+        user       "User account  $(shown "$USER_NAME")" \
+        desktop    "Desktop       $(desktop_field "$DESKTOP" 2)" \
+        extras     "Extras        $(shown "${EXTRAS[*]}")" \
+        disk       "Disk          $disk_desc" \
+        bootloader "Boot loader   systemd-boot (UEFI)" \
+        install    "Install") || { clear; exit 0; }
+    case $choice in
+        keyboard) ask_keymap; next=network ;;
+        network) ask_network; next=hostname ;;
+        hostname) ask_hostname; next=locale ;;
+        locale) ask_locale; next=timezone ;;
+        timezone) ask_timezone; next=root ;;
+        root) ask_root_password; next=user ;;
+        user) ask_user; next=desktop ;;
+        desktop) ask_desktop; next=extras ;;
+        extras) ask_extras; next=disk ;;
+        disk) ask_disk; next=install ;;
+        bootloader)
+            d --title "Boot loader" --msgbox "systemd-boot, on the EFI system partition mounted at /boot.\n\nBIOS (legacy) installs are not supported yet." 9 60
+            next=install
+            ;;
+        install)
+            problem=$(settings_problem)
+            if [[ -n $problem ]]; then
+                d --title "Not ready" --msgbox "$problem" 8 64
+                continue
+            fi
+            d --title "Install Kiln Linux?" --defaultno --yes-label Install --no-label Back \
+                --yesno "$(summary)" 20 76 || continue
+            if [[ $SCHEME == auto ]]; then
+                typed=$(d --title "Erase $DISK" --inputbox "Everything on $DISK will be erased.\n\nType $DISK to confirm:" 10 60) || continue
+                [[ $typed == "$DISK" ]] || { d --msgbox "Not confirmed; nothing was changed." 6 44; continue; }
+            fi
+            if do_install; then
+                if d --title Done --yes-label Reboot --no-label Exit --yesno \
+                    "Kiln Linux is installed.\n\n$(summary | tail -n1)\n\nRemove the install medium, then reboot." 11 66; then
+                    clear
+                    systemctl reboot
+                fi
+                clear
+                exit 0
+            fi
+            d --title "Installation FAILED" --msgbox "Kiln Linux is NOT installed.\n\nLast lines of the log ($LOG):\n\n$(tail -n 8 "$LOG" | cut -c1-70)\n\nFilesystems may be left mounted under $MNT; unmount with umount -R $MNT before retrying." 22 78
+            next=install
+            ;;
+    esac
+done

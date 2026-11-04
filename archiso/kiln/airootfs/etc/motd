@@ -1,0 +1,10 @@
+
+   [38;2;164;71;31m▲[0m  [1mKiln Linux[0m  live environment
+
+   Install:      [38;2;164;71;31mkiln-install[0m
+   Wi-Fi:        iwctl
+   Profiles:     kiln help
+   Packages:     pacman (official Arch repositories)
+
+   Ethernet connects automatically over DHCP.
+

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs><mask id="m"><rect width="128" height="128" fill="#fff"/>
+    <g transform="rotate(-14 64 64)" fill="#000"><rect x="-20" y="54" width="170" height="9"/><rect x="-20" y="80" width="170" height="9"/></g>
+  </mask></defs>
+  <path d="M64 8 L120 116 H8 Z" fill="#1A1A1A" mask="url(#m)"/>
+</svg>

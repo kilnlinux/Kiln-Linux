@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs><mask id="m"><rect width="128" height="128" fill="#fff"/>
+    <g fill="none" stroke="#000" stroke-width="9" stroke-linecap="round">
+      <path d="M2 54 C22 42 42 66 64 54 S106 42 126 54"/><path d="M2 80 C22 68 42 92 64 80 S106 68 126 80"/>
+    </g></mask></defs>
+  <circle cx="64" cy="64" r="56" fill="#EDEDED" mask="url(#m)"/>
+</svg>

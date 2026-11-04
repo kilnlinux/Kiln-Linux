@@ -1,0 +1,8 @@
+NAME="Kiln Linux"
+PRETTY_NAME="Kiln Linux"
+ID=kiln
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;164;71;31"
+HOME_URL="https://kilnlinux.org/"
+DOCUMENTATION_URL="https://wiki.archlinux.org/"

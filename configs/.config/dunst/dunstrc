@@ -1,0 +1,13 @@
+# Kiln Linux dunst config (notifications in the twmx desktop). Reference: man 5 dunst
+[global]
+    font = DejaVu Sans 10
+    frame_width = 2
+    frame_color = "#a4471f"
+    background = "#1a1a1a"
+    foreground = "#ededed"
+    offset = (12, 12)
+    corner_radius = 0
+
+[urgency_critical]
+    frame_color = "#c0392b"
+    timeout = 0

@@ -1,0 +1,27 @@
+! Kiln Linux X resources: xterm colors and font. Reload: xrdb -merge ~/.Xresources
+XTerm*termName:          xterm-256color
+XTerm*faceName:          DejaVu Sans Mono
+XTerm*faceSize:          11
+XTerm*internalBorder:    6
+XTerm*saveLines:         5000
+XTerm*selectToClipboard: true
+XTerm*metaSendsEscape:   true
+XTerm*background:        #1a1a1a
+XTerm*foreground:        #ededed
+XTerm*cursorColor:       #a4471f
+XTerm*color0:  #1a1a1a
+XTerm*color1:  #c0392b
+XTerm*color2:  #6a9955
+XTerm*color3:  #e8a33d
+XTerm*color4:  #5d8ac0
+XTerm*color5:  #a97bbf
+XTerm*color6:  #4fa3a5
+XTerm*color7:  #cccccc
+XTerm*color8:  #555555
+XTerm*color9:  #e05a4b
+XTerm*color10: #8ec07c
+XTerm*color11: #f0c36b
+XTerm*color12: #83a5d6
+XTerm*color13: #c59bd6
+XTerm*color14: #6fc3c5
+XTerm*color15: #ededed

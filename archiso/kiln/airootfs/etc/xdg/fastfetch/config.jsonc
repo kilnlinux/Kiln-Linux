@@ -1,0 +1,20 @@
+// Kiln Linux fastfetch defaults. ~/.config/fastfetch/config.jsonc overrides.
+// The logo is the Kiln mark (branding/mark-triangle.svg) in ASCII, from the original Kiln Linux.
+{
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/kiln/logo",
+    "color": { "1": "38;2;237;237;237" },
+    "padding": { "right": 3 }
+  },
+  "display": {
+    "color": { "keys": "38;2;164;71;31", "title": "38;2;164;71;31" }
+  },
+  // A config file replaces fastfetch's defaults, so list the modules.
+  "modules": [
+    "title", "separator",
+    "os", "kernel", "uptime", "packages", "shell",
+    "wm", "terminal", "cpu", "gpu", "memory", "disk",
+    "break", "colors"
+  ]
+}

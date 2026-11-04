@@ -1,0 +1,53 @@
+# Kiln Linux live ISO packages. Keep this list short: every entry ends up in the ISO.
+# Base system and boot
+base
+linux
+linux-firmware
+linux-firmware-marvell
+sof-firmware
+amd-ucode
+intel-ucode
+mkinitcpio
+mkinitcpio-archiso
+syslinux
+memtest86+
+memtest86+-efi
+# Installer requirements (kiln-install)
+arch-install-scripts
+btrfs-progs
+dosfstools
+e2fsprogs
+efibootmgr
+gptfdisk
+# Disk rescue
+cryptsetup
+exfatprogs
+ntfsprogs
+nvme-cli
+parted
+smartmontools
+# Network (live uses systemd-networkd + iwd, as upstream releng)
+iwd
+iw
+wireless-regdb
+systemd-resolvconf
+openssh
+rsync
+# Accessibility (speech boot entry, braille)
+alsa-utils
+brltty
+espeakup
+livecd-sounds
+# Console tools
+diffutils
+foot-terminfo
+less
+man-db
+man-pages
+nano
+dialog
+sudo
+terminus-font
+tmux
+fastfetch
+usbutils

@@ -1,0 +1,14 @@
+# The filesystem package owns /usr/lib/os-release and would restore Arch's
+# copy on every upgrade. Re-apply Kiln's after each install/upgrade of it.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = filesystem
+
+[Action]
+Description = Applying Kiln Linux os-release...
+When = PostTransaction
+Depends = sh
+Depends = coreutils
+Exec = /bin/sh -c 'f=/etc/kiln/os-release; [ ! -r "$f" ] || cp -f -- "$f" /usr/lib/os-release'

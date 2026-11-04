@@ -1,0 +1,16 @@
+# Hyprland desktop: Wayland tiling compositor with animations. Apply on top of core.
+# Start it from a TTY with `Hyprland`. Its default config uses kitty and wofi.
+[profile]
+name = "hyprland"
+description = "Hyprland Wayland tiling desktop: kitty, wofi, mako"
+
+[packages]
+official = [
+    "hyprland",
+    "xdg-desktop-portal-hyprland",  # screen sharing, file pickers
+    "kitty",          # terminal (Super+Q in the default config)
+    "wofi",           # launcher (Super+R in the default config)
+    "mako",           # notifications
+    "polkit",
+    "ttf-dejavu",
+]
