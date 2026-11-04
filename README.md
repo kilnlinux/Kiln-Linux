@@ -74,6 +74,11 @@ twmx is a one-file tiling window manager grown out of TinyWM. On Kiln it
 comes with xterm on Super+Return, dmenu on Super+d and dunst for
 notifications, in Kiln's dark-and-brick colors. Kiln builds twmx from a
 pinned commit and ships it in a small local `[kiln]` pacman repository.
+A daily user timer checks GitHub and builds updates into `~/.local/bin`,
+keeping Kiln's colors and your changes to `~/.local/src/twmx/config.h`.
+The next X11 login uses the updated build; the running desktop stays open.
+Run `/usr/bin/twmx-update` to check now. Disable automatic updates with
+`systemctl --user mask --now twmx-update.timer`.
 
 ## Install
 
@@ -143,7 +148,7 @@ result into twmx, and that path works today. Still missing:
 
 - BIOS installs (the ISO itself boots on BIOS)
 - disk encryption in the installer
-- online updates for `[kiln]` packages: twmx updates when you install from a newer ISO
+- a hosted repository for `[kiln]` package updates; twmx currently updates per user from GitHub
 - a pacman package for kiln itself (the installer copies the binary)
 
 The other six desktops go through the same installer steps, but nobody has
