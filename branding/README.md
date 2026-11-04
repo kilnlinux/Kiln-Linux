@@ -15,7 +15,8 @@ Shared with kilnlinux.org and the original Kiln Linux project.
 Derived from the mark; update them when it changes:
 
 - `archiso/kiln/airootfs/usr/share/kiln/logo`: the mark in ASCII, rasterized
-  from `mark-triangle.svg` (22 rows, 46 columns), used by fastfetch (`/etc/xdg/fastfetch/config.jsonc`).
+  from `mark-triangle.svg` (22 rows, 46 columns), used by fastfetch (`/etc/xdg/fastfetch/config.jsonc`), which is not
+  preinstalled: `pacman -S fastfetch` shows the Kiln logo.
 - `splash.svg` to `archiso/kiln/syslinux/splash.png` (BIOS boot menu):
   `rsvg-convert branding/splash.svg -o archiso/kiln/syslinux/splash.png`
 - Terminal output: `::` headings in the accent, everything else plain.

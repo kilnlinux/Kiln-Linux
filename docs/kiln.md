@@ -43,7 +43,7 @@ terminal, so nothing is confirmed by accident.
 
 | Profile | Contents |
 |---|---|
-| `core` | networkmanager, sudo, nano, less, man-db, fastfetch |
+| `core` | networkmanager, sudo, nano, less, man-db |
 | `twmx` | twmx, xorg-server, xorg-xinit, xorg-xrdb, xorg-xsetroot, xorg-xrandr, xterm, dmenu, dunst, polybar, i3lock, maim, ttf-dejavu (the default desktop) |
 | `i3` | i3-wm, i3status, i3lock, Xorg, xterm, dmenu, dunst, maim |
 | `sway` | sway, swaybg, swaylock, foot, fuzzel, mako, grim, slurp |

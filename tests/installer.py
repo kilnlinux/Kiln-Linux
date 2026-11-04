@@ -126,13 +126,14 @@ next=user
 capture=$(mktemp)
 d() { printf '%s\n' "$@" > "$capture"; }
 main_menu
- grep -q '\[required\] create your login' "$capture"
- grep -q '\[required\] choose a disk' "$capture"
- grep -q 'Still needed:' "$capture"
+ grep -qx 'UserAccount' "$capture"
+ grep -qx 'Install' "$capture"
+settings_text > "$capture"
+ grep -q 'Still needed: UserAccount Disk' "$capture"
 USER_NAME=test USER_PW=secret DISK=/dev/test SCHEME=auto
-main_menu
- grep -q 'Required choices set' "$capture"
- grep -q 'ERASE /dev/test' "$capture"
+settings_text > "$capture"
+ ! grep -q 'Still needed' "$capture"
+ grep -q 'ERASE all of /dev/test' "$capture"
  ! grep -q secret "$capture"
 rm -f "$capture"
 d() { if [[ " $* " == *' --inputbox '* ]]; then printf '%s' "$ANSWER"; fi; }

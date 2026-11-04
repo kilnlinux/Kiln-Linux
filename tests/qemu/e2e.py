@@ -21,5 +21,5 @@ else:
     v.keys('kilntest\n'); time.sleep(2); v.keys('kilntest-pw\n')
     time.sleep(10); v.shot('boot-autostart.png')   # tty1 login should have started twmx
     v.hmp('sendkey meta_l-ret'); time.sleep(3)      # Super+Return: xterm
-    v.keys('fastfetch; kiln list\n'); time.sleep(4); v.shot('boot-twmx.png')
+    v.keys('kiln list\n'); time.sleep(4); v.shot('boot-twmx.png')
     v.hmp('system_powerdown'); time.sleep(10); v.kill()
