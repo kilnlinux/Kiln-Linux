@@ -288,10 +288,11 @@ packages. The distro builds that same recipe into its local repository, uses
 it in the live ISO, and installs kiln plus kiln-updates in the target.
 
 `packages/kiln-updates` supplies the daily system timer and `kiln-update`.
-Only stable CLI releases are installed. HTTPS downloads must match GitHub's
-asset digest, size, expected package name, architecture and version. A final
+It checks every installed `[kiln]` package against the latest stable release
+of the GitHub repository in its package URL. Only stable releases are
+installed. HTTPS downloads must match GitHub's asset digest, size, expected package name, architecture and version. A final
 version check prevents downgrades after concurrent updates. Pacman owns the
-transaction; dependency failures preserve the existing CLI.
+transaction; dependency failures preserve the existing packages.
 
 The build records revision, release tag and timestamp in
 `/usr/share/kiln/build.json`. The updater uses it to report newer distro GitHub

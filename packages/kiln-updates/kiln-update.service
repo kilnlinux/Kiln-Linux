@@ -1,5 +1,5 @@
 [Unit]
-Description=Update kiln and check Kiln Linux GitHub releases
+Description=Update Kiln packages and check Kiln Linux GitHub releases
 Wants=network-online.target
 After=network-online.target
 ConditionPathExists=/etc/kiln/os-release

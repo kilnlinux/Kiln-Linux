@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Update the kiln pacman package and report Kiln Linux source/releases."""
+"""Update installed Kiln packages from their GitHub releases and report Kiln Linux source/releases."""
 import argparse
 import datetime
 import fcntl
@@ -14,7 +14,6 @@ import tempfile
 import urllib.error
 import urllib.request
 
-CLI_REPO = "kilnlinux/kiln-package-manager"
 DISTRO_REPO = "kilnlinux/Kiln-Linux"
 STATE = Path("/var/lib/kiln/updates.json")
 BUILD = Path("/usr/share/kiln/build.json")
@@ -41,16 +40,38 @@ def fetch_json(path):
     return value
 
 
-def candidate(release):
+def fields(text):
+    """Parse pacman's "Key : value" output."""
+    pairs = (line.split(":", 1) for line in text.splitlines() if ":" in line)
+    return {key.strip(): value.strip() for key, value in pairs}
+
+
+def installed_packages():
+    """Map each installed [kiln] package to (version, GitHub owner/repo or None)."""
+    packages = {}
+    for name in subprocess.check_output(["pacman", "-Slq", "kiln"], text=True).split():
+        info = subprocess.run(
+            ["pacman", "-Qi", "--", name], capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"},
+        )
+        if info.returncode:
+            continue
+        info = fields(info.stdout)
+        repo = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?", info.get("URL", ""))
+        packages[name] = (info["Version"], repo[1] if repo else None)
+    return packages
+
+
+def candidate(release, name):
     if not release or release.get("draft") or release.get("prerelease"):
         return None
+    pattern = re.escape(name) + r"-([0-9][A-Za-z0-9.+_~\-]*-[0-9]+)-(?:x86_64|any)\.pkg\.tar\.zst"
     matches = []
     for asset in release.get("assets", []):
-        match = re.fullmatch(r"kiln-([0-9][A-Za-z0-9.+_~\-]*-[0-9]+)-x86_64\.pkg\.tar\.zst", asset.get("name", ""))
+        match = re.fullmatch(pattern, asset.get("name", ""))
         if match:
             matches.append((match[1], asset))
     if len(matches) > 1:
-        raise ValueError("release contains multiple kiln packages")
+        raise ValueError(f"release contains multiple {name} packages")
     return matches[0] if matches else None
 
 
@@ -58,46 +79,67 @@ def newer(version, installed):
     return int(subprocess.check_output(["vercmp", version, installed], text=True).strip()) > 0
 
 
-def install_package(version, asset):
+def download(update, directory):
+    """Download one release package and verify it; return its path."""
+    asset = update["asset"]
     digest = asset.get("digest", "")
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        raise ValueError("release asset has no valid GitHub SHA-256 digest")
+        raise ValueError(f"{update['name']} release asset has no valid GitHub SHA-256 digest")
     url = asset.get("browser_download_url", "")
-    if not url.startswith(f"https://github.com/{CLI_REPO}/releases/download/"):
-        raise ValueError("package URL is outside the kiln release repository")
+    if not url.startswith(f"https://github.com/{update['repo']}/releases/download/"):
+        raise ValueError(f"{update['name']} package URL is outside its release repository")
     if not 0 < asset.get("size", 0) <= MAX_PACKAGE:
-        raise ValueError("invalid release package size")
+        raise ValueError(f"invalid {update['name']} release package size")
+    package = Path(directory) / Path(asset["name"]).name
+    checksum = hashlib.sha256()
+    size = 0
+    with urllib.request.urlopen(url, timeout=60) as response, package.open("wb") as target:
+        while chunk := response.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_PACKAGE:
+                raise ValueError("download exceeds package size limit")
+            checksum.update(chunk)
+            target.write(chunk)
+    if size != asset["size"] or checksum.hexdigest() != digest.removeprefix("sha256:"):
+        raise ValueError(f"{update['name']} package size or SHA-256 digest does not match GitHub")
+    info = fields(subprocess.check_output(
+        ["pacman", "-Qip", str(package)], text=True, env={**os.environ, "LC_ALL": "C"},
+    ))
+    if (info.get("Name"), info.get("Version")) != (update["name"], update["version"]) \
+            or info.get("Architecture") not in ("x86_64", "any"):
+        raise ValueError(f"downloaded {update['name']} package name, version or architecture is wrong")
+    return package
+
+
+def install(updates):
+    """Verify every update, then install them in one pacman transaction."""
     with tempfile.TemporaryDirectory(prefix="kiln-update-") as directory:
-        package = Path(directory) / asset["name"]
-        checksum = hashlib.sha256()
-        size = 0
-        with urllib.request.urlopen(url, timeout=60) as response, package.open("wb") as target:
-            while chunk := response.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_PACKAGE:
-                    raise ValueError("download exceeds package size limit")
-                checksum.update(chunk)
-                target.write(chunk)
-        if size != asset["size"] or checksum.hexdigest() != digest.removeprefix("sha256:"):
-            raise ValueError("package size or SHA-256 digest does not match GitHub")
-        metadata = subprocess.check_output(
-            ["pacman", "-Qip", str(package)], text=True, env={**os.environ, "LC_ALL": "C"},
-        )
-        fields = dict(line.split(":", 1) for line in metadata.splitlines() if ":" in line)
-        fields = {key.strip(): value.strip() for key, value in fields.items()}
-        if (fields.get("Name"), fields.get("Version"), fields.get("Architecture")) != ("kiln", version, "x86_64"):
-            raise ValueError("downloaded package name, version or architecture is wrong")
-        # Recheck after downloading so a concurrent upgrade cannot cause a downgrade.
-        installed = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
-        if newer(version, installed):
-            subprocess.run(["pacman", "-U", "--noconfirm", "--", str(package)], check=True)
+        packages = []
+        for update in updates:
+            package = download(update, directory)
+            # Recheck after downloading so a concurrent upgrade cannot cause a downgrade.
+            installed = subprocess.check_output(["pacman", "-Q", update["name"]], text=True).split()[1]
+            if newer(update["version"], installed):
+                packages.append(str(package))
+        if packages:
+            subprocess.run(["pacman", "-U", "--noconfirm", "--", *packages], check=True)
 
 
 def collect():
-    installed = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
-    release = fetch_json(CLI_REPO + "/releases/latest")
-    package = candidate(release)
-    distro = fetch_json(DISTRO_REPO + "/releases/latest")
+    releases = {}
+
+    def latest(repo):
+        if repo not in releases:
+            releases[repo] = fetch_json(repo + "/releases/latest")
+        return releases[repo]
+
+    updates = []
+    for name, (installed, repo) in installed_packages().items():
+        found = candidate(latest(repo), name) if repo else None
+        if found and newer(found[0], installed):
+            updates.append({"name": name, "installed": installed, "version": found[0],
+                            "repo": repo, "asset": found[1]})
+    distro = latest(DISTRO_REPO)
     source = fetch_json(DISTRO_REPO + "/commits/main")
     build = json.loads(BUILD.read_text()) if BUILD.exists() else {}
     newer_release = False
@@ -106,9 +148,7 @@ def collect():
         built = datetime.datetime.fromisoformat(build.get("built_at", "1970-01-01T00:00:00+00:00"))
         newer_release = published > built
     return {
-        "installed": installed,
-        "kiln_available": bool(package and newer(package[0], installed)),
-        "kiln_release": release,
+        "updates": updates,
         "distro_release": distro if newer_release else None,
         "source_update": source.get("sha") != build.get("revision"),
         "source_url": f"https://github.com/{DISTRO_REPO}/commits/main",
@@ -117,10 +157,11 @@ def collect():
 
 
 def show(data, quiet=False):
-    if data.get("kiln_available"):
-        print(f"kiln package update available: https://github.com/{CLI_REPO}/releases/latest")
-    elif not quiet:
-        print("kiln package: up to date")
+    for update in data.get("updates", []):
+        print(f"{update['name']} {update['version']} available (installed {update['installed']}): "
+              f"https://github.com/{update['repo']}/releases/latest")
+    if not data.get("updates") and not quiet:
+        print("Kiln packages: up to date")
     release = data.get("distro_release")
     if release:
         print(f"Kiln Linux release available: {release['tag_name']}")
@@ -135,7 +176,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="check GitHub without installing")
-    mode.add_argument("--apply", action="store_true", help="update kiln through pacman; root required")
+    mode.add_argument("--apply", action="store_true", help="update installed Kiln packages through pacman; root required")
     mode.add_argument("--status", action="store_true", help="show cached update notices without network access")
     args = parser.parse_args()
     if args.status:
@@ -152,10 +193,9 @@ def main():
             except BlockingIOError:
                 return
             data = collect()
-            if data["kiln_available"]:
-                install_package(*candidate(data["kiln_release"]))
-                data["installed"] = subprocess.check_output(["pacman", "-Q", "kiln"], text=True).split()[1]
-                data["kiln_available"] = False
+            if data["updates"]:
+                install(data["updates"])
+                data["updates"] = []
             STATE.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(mode="w", dir=STATE.parent, delete=False) as temporary:
                 json.dump(data, temporary)

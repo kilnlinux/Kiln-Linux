@@ -141,15 +141,17 @@ The distro's `packages/kiln` directory is a pinned Git submodule. After cloning,
 run `git submodule update --init --recursive` before building or testing.
 
 New Kiln installations use `/usr/bin/kiln`, owned by the kiln pacman package,
-and enable `kiln-update.timer`. It checks daily, downloads a newer stable
-x86_64 package, verifies its GitHub SHA-256 digest and package metadata, then
-installs it through pacman. Build-library minimum versions prevent installation
+and enable `kiln-update.timer`. It checks daily every installed package from
+the `[kiln]` repository against the latest stable release of the GitHub
+repository in its package URL. It downloads each newer release package,
+verifies its GitHub SHA-256 digest and package metadata, then installs them
+through pacman in one transaction. Build-library minimum versions prevent installation
 on an older incompatible system; update Arch packages with `sudo pacman -Syu`
 if pacman reports unsatisfied dependencies. State and profiles remain in place.
 
 ```sh
-kiln-update --check             # current GitHub CLI/distro releases and source
-sudo kiln-update --apply        # update the CLI package; report distro changes
+kiln-update --check             # Kiln package updates, distro releases and source
+sudo kiln-update --apply        # update Kiln packages; report distro changes
 kiln-update --status            # cached notices, without network access
 sudo systemctl disable --now kiln-update.timer
 ```
