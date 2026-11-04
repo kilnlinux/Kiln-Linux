@@ -2,20 +2,26 @@
 # Built by scripts/build.sh into the [kiln] repository shipped on the ISO.
 pkgname=twmx
 pkgver=2.1
-pkgrel=1
+pkgrel=2
 pkgdesc="Small, fast tiling window manager for X11, grown out of TinyWM (Kiln Linux build)"
 arch=('x86_64')
 url="https://github.com/arcbaseproject/twmx"
 license=('Unlicense')
-depends=('libx11' 'libxrandr')
+depends=('libx11' 'libxrandr' 'gcc' 'make' 'pkgconf' 'curl' 'util-linux')
 makedepends=('git' 'pkgconf')
 options=('!debug')
 # Pinned commit: v2.1 plus the xsession file installed by `make install`.
 _commit=da855828e57a841950da60097580e9537c06efaf
 source=("git+https://github.com/arcbaseproject/twmx.git#commit=${_commit}"
-        "config.h")
+        "config.h"
+        "twmx-update-kiln"
+        "twmx-update.service"
+        "twmx-update.timer")
 sha256sums=('SKIP'
-            '6805adf90e3684e62c7539a915e2d72f3b6ba9f85c98c670e56e9c01b7cefd99')
+            '6805adf90e3684e62c7539a915e2d72f3b6ba9f85c98c670e56e9c01b7cefd99'
+            '5dc303ec065ca81bdb68aa4a427ff46c52cfb3264f91d75c234c03db043cf850'
+            '47071d5b3eda31d1bea6d28b5e030f1c3a4bdd54e2b4da323a9e36fa33eb806d'
+            '4832cbb88179a68c8baad84c45a9b9e7e775b834b28558f871091502c0d3636d')
 
 prepare() {
     # twmx is configured at compile time; use Kiln's config.h.
@@ -37,4 +43,11 @@ package() {
     cd twmx
     make PREFIX=/usr DESTDIR="${pkgdir}" install
     install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm755 twmx-update "${pkgdir}/usr/share/twmx/twmx-update"
+    install -Dm644 config.h "${pkgdir}/usr/share/twmx/config.h"
+    install -Dm755 "${srcdir}/twmx-update-kiln" "${pkgdir}/usr/bin/twmx-update"
+    install -Dm644 "${srcdir}/twmx-update.service" "${pkgdir}/usr/lib/systemd/user/twmx-update.service"
+    install -Dm644 "${srcdir}/twmx-update.timer" "${pkgdir}/usr/lib/systemd/user/twmx-update.timer"
+    mkdir -p "${pkgdir}/usr/lib/systemd/user/timers.target.wants"
+    ln -s ../twmx-update.timer "${pkgdir}/usr/lib/systemd/user/timers.target.wants/twmx-update.timer"
 }
