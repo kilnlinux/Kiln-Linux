@@ -4,6 +4,8 @@
 
 No root, no VM, under a minute:
 
+- twmx updater wrapper: configuration seeding and preservation, delegation to
+  the updated upstream helper, error propagation and root refusal;
 - installer failure handling with mocked commands: every failed stage stops
   immediately, without touching disks;
 - kiln unit tests (manifest validation, planning rules, CLI parsing, state
@@ -87,9 +89,14 @@ showed kernel messages drawing over the progress box (now suppressed) and
 no desktop on login. After the installer gained the tty1 autostart lines, a
 reinstall from the rebuilt ISO confirmed that logging in on tty1 starts twmx.
 
+The manual disk path also works: partitioning a VM disk in cfdisk (GPT, 1 GiB
+EFI System, the rest Linux filesystem), then picking the EFI and root
+partitions in the installer.
+
 ## Not yet tested
 
-- [ ] manual partitioning (cfdisk), btrfs, a root password
+- [ ] btrfs, a root password
+- [ ] LUKS2 root encryption (`ENCRYPT=yes`): install, passphrase prompt at boot
 - [ ] desktops other than twmx: i3, sway, Hyprland, XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
 - [ ] installer failure path under real faults (e.g. pull the network during
