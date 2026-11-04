@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise installer failure handling with no disk or system mutations."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
@@ -49,3 +50,70 @@ exit "$rc"
             assert result.returncode == 0, (result.stdout, result.stderr)
             assert "UNMOUNT" in result.stdout and "SUCCESS" in result.stdout
 print("Installer: eight failure stages stop immediately in both modes; success completes.")
+
+# Exercise the real retry helper; all mirrors and command counters live in /tmp.
+with tempfile.TemporaryDirectory(prefix="kiln-download-test-") as directory:
+    root = Path(directory)
+    for mode, attempts, refreshes, success in [
+        ("success", 1, 0, True),
+        ("download-once", 2, 1, True),
+        ("download-always", 3, 2, False),
+        ("signature", 1, 0, False),
+        ("mixed-signature", 1, 0, False),
+        ("refresh-failure", 1, 1, False),
+    ]:
+        mirrorlist = root / f"{mode}.mirrorlist"
+        original = "# custom mirror\nServer = https://example.invalid/$repo/os/$arch\n"
+        mirrorlist.write_text(original)
+        commands = root / f"{mode}.commands"
+        counters = root / f"{mode}.count"
+        script = functions + r'''
+sleep() { :; }
+arch-chroot() {
+    echo "$*" >> "$TEST_COMMANDS"
+    if [[ $2 == pacman ]]; then
+        if [[ $TEST_MODE == refresh-failure ]]; then
+            echo 'error: invalid or corrupted package (PGP signature)'
+            return 1
+        fi
+        return 0
+    fi
+    local count=0
+    [[ ! -f $TEST_COUNT ]] || read -r count < "$TEST_COUNT"
+    count=$((count + 1))
+    echo "$count" > "$TEST_COUNT"
+    case $TEST_MODE in
+        success) return 0 ;;
+        download-once) ((count > 1)) && return 0 ;;
+        signature) echo 'error: invalid or corrupted package (PGP signature)'; return 1 ;;
+        mixed-signature)
+            echo 'error: failed retrieving file example.pkg.tar.zst : timeout'
+            echo 'error: invalid or corrupted package (PGP signature)'
+            return 1 ;;
+    esac
+    echo 'error: failed retrieving file example.pkg.tar.zst : The requested URL returned error: 404'
+    return 1
+}
+set -e
+retry_downloads "$TEST_MIRRORS" arch-chroot /mock-target kiln apply desktop --yes
+echo COMPLETED
+'''
+        result = subprocess.run(
+            ["bash"], input=script, text=True, capture_output=True, timeout=10,
+            env=dict(os.environ, TEST_MODE=mode, TEST_MIRRORS=str(mirrorlist),
+                     TEST_COMMANDS=str(commands), TEST_COUNT=str(counters)),
+        )
+        assert (result.returncode == 0) == success, (mode, result.stdout, result.stderr)
+        assert int(counters.read_text()) == attempts, (mode, result.stdout)
+        calls = commands.read_text().splitlines()
+        assert sum("pacman -Syyu --noconfirm" in line for line in calls) == refreshes, calls
+        if refreshes:
+            assert Path(str(mirrorlist) + ".kiln-original").read_text() == original
+            assert "$repo/os/$arch" in mirrorlist.read_text()
+            assert original in mirrorlist.read_text()
+            assert "404" in result.stdout
+        else:
+            assert mirrorlist.read_text() == original
+            assert not Path(str(mirrorlist) + ".kiln-original").exists()
+        assert ("COMPLETED" in result.stdout) == success
+print("Downloads: bounded retry, fallback mirrors, full upgrade, preserved mirror list, fatal signature errors.")

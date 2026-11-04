@@ -7,7 +7,9 @@ No root, no VM, under a minute:
 - twmx updater wrapper: configuration seeding and preservation, delegation to
   the updated upstream helper, error propagation and root refusal;
 - installer failure handling with mocked commands: every failed stage stops
-  immediately, without touching disks;
+  immediately, without touching disks; download recovery checks bounded retries,
+  fallback mirrors, full database refreshes, preserved mirror lists and fatal
+  signature errors;
 - kiln unit tests (manifest validation, planning rules, CLI parsing, state
   file round trip) and integration tests (the real binary against a fake
   `pacman` on `PATH`: plan buckets, unknown packages, idempotent apply, root

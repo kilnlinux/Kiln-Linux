@@ -309,6 +309,53 @@ settings_problem() {
 
 run() { printf '$ %s\n' "$*"; "$@"; }
 
+# Retry only download failures; keep transaction and signature errors fatal.
+retry_downloads() {
+    local mirrorlist=$1 attempt output rc replacement server
+    local -a status
+    shift
+    output=$(mktemp) || return 1
+    for attempt in 1 2 3; do
+        if (
+            # Changing mirrors requires fresh databases and a full upgrade.
+            if ((attempt > 1)) && [[ $1 == arch-chroot ]]; then
+                LC_ALL=C run arch-chroot "$MNT" pacman -Syyu --noconfirm || exit $?
+            fi
+            LC_ALL=C run "$@"
+        ) 2>&1 | tee "$output"; then
+            rm -f "$output"
+            return 0
+        else
+            status=("${PIPESTATUS[@]}")
+        fi
+        rc=${status[0]}
+        if ((status[1] != 0)); then rm -f "$output"; return 1; fi
+        if ((attempt == 3)) ||
+            grep -Eq 'PGP signature|signature.*unknown trust|failed to prepare transaction|could not lock database|conflicting files|target not found:' "$output" ||
+            ! grep -Eq 'failed retrieving file|failed to retrieve some files|failed to synchronize all databases' "$output"; then
+            rm -f "$output"
+            return "$rc"
+        fi
+        echo "Download failed; switching mirror and retrying ($((attempt + 1))/3)."
+        if [[ ! -e $mirrorlist.kiln-original ]]; then
+            cp -- "$mirrorlist" "$mirrorlist.kiln-original" || { rm -f "$output"; return 1; }
+        fi
+        case $attempt in
+            1) server='https://mirrors.kernel.org/archlinux/$repo/os/$arch' ;;
+            2) server='https://geo.mirror.pkgbuild.com/$repo/os/$arch' ;;
+        esac
+        replacement=$(mktemp "$mirrorlist.kiln.XXXXXX") || { rm -f "$output"; return 1; }
+        if ! { printf 'Server = %s\n' "$server"; cat "$mirrorlist"; } >"$replacement"; then
+            rm -f "$replacement" "$output"
+            return 1
+        fi
+        chmod --reference="$mirrorlist" "$replacement" && mv -f -- "$replacement" "$mirrorlist" || {
+            rm -f "$replacement" "$output"; return 1;
+        }
+        sleep 2
+    done
+}
+
 partition_and_mount() {
     if [[ $SCHEME == auto ]]; then
         run wipefs -a "$DISK"
@@ -342,7 +389,7 @@ install_base() {
     if grep -q GenuineIntel /proc/cpuinfo; then pkgs+=(intel-ucode); fi
     if grep -q AuthenticAMD /proc/cpuinfo; then pkgs+=(amd-ucode); fi
     # -K: a fresh pacman keyring in the target, not a copy of the live one.
-    run pacstrap -K "$MNT" "${pkgs[@]}"
+    retry_downloads /etc/pacman.d/mirrorlist pacstrap -K "$MNT" "${pkgs[@]}"
     genfstab -U "$MNT" >>"$MNT/etc/fstab"
     echo "fstab:"
     grep -v '^#' "$MNT/etc/fstab" | sed '/^$/d'
@@ -369,7 +416,7 @@ install_kiln_files() {
 SigLevel = Optional TrustAll
 Server = file:///usr/share/kiln/repo
 CONF
-    run arch-chroot "$MNT" pacman -Syu --noconfirm # -u: never a partial upgrade
+    retry_downloads "$MNT/etc/pacman.d/mirrorlist" arch-chroot "$MNT" pacman -Syu --noconfirm # -u: never a partial upgrade
 }
 
 configure_system() {
@@ -389,7 +436,7 @@ apply_profiles() {
     local p dm
     for p in core "$(desktop_field "$DESKTOP" 3)" "${EXTRAS[@]}"; do
         [[ $p == - ]] && continue
-        run arch-chroot "$MNT" kiln apply "$p" --yes
+        retry_downloads "$MNT/etc/pacman.d/mirrorlist" arch-chroot "$MNT" kiln apply "$p" --yes
     done
     # kiln never enables services; the installer does, for what it installed.
     run arch-chroot "$MNT" systemctl enable NetworkManager.service
@@ -607,7 +654,8 @@ while true; do
                 clear
                 exit 0
             fi
-            d --title "Installation FAILED" --msgbox "Kiln Linux is NOT installed.\n\nLast lines of the log ($LOG):\n\n$(tail -n 8 "$LOG" | cut -c1-70)\n\nFilesystems may be left mounted under $MNT; unmount with umount -R $MNT before retrying." 22 78
+            d --title "Installation FAILED" --msgbox "Kiln Linux is NOT installed.\n\nLog: $LOG\n\nThe full log follows; use the arrow keys to scroll through the download errors.\n\nFilesystems may be left mounted under $MNT; unmount with umount -R $MNT before retrying." 22 78
+            d --title "Full installation log (scroll to see download errors)" --textbox "$LOG" 22 78
             next=install
             ;;
     esac
