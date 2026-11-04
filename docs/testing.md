@@ -2,7 +2,11 @@
 
 ## Automated: `make test`
 
-No root, no VM, under a minute:
+No root, no VM, under a minute. CI (`.github/workflows/ci.yml`) runs it in an
+`archlinux:base-devel` container on every push and pull request; on a `v*`
+tag it also attaches `kiln-updates-*.pkg.tar.zst` to the GitHub release so
+`kiln-update` can update it. The ISO is still built and uploaded by hand.
+
 
 - twmx updater wrapper: configuration seeding and preservation, delegation to
   the updated upstream helper, error propagation and root refusal;

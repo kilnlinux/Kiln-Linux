@@ -268,7 +268,7 @@ ask_disk() {
     SCHEME=$(d --title " Partitions " --menu "How to partition $DISK:" 12 72 2 \
         auto "Erase the whole disk: 1 GiB boot partition + root" \
         manual "Edit partitions with cfdisk, then choose them") || { DISK=; return; }
-    ESP= ROOT= FORMAT_ESP=yes
+    ESP='' ROOT='' FORMAT_ESP=yes
     if [[ $SCHEME == manual ]]; then
         cfdisk "$DISK"
         local parts=() fstype
@@ -592,7 +592,7 @@ HOOK
 }
 
 install_bootloader() {
-    local uuid luks= options
+    local uuid luks='' options
     uuid=$(findmnt -no UUID "$MNT")
     [[ -n $uuid ]] || { echo "cannot determine the root filesystem UUID"; return 1; }
     if [[ $ENCRYPT == yes ]]; then
@@ -707,7 +707,7 @@ validate() {
     fi
     # grub-mkconfig may name the unlocked root by its /dev/mapper path instead of the UUID.
     check "boot entry points at root" grep -Eq "root=(UUID=$uuid|/dev/mapper/$CRYPT_NAME)( |\$)" "$(bootcfg)"
-    check "fstab mounts root by UUID" grep -Eq "^UUID=$uuid[[:space:]]+/[[:space:]]" "$MNT/etc/fstab"
+    check "fstab mounts root by UUID" grep -Eq "^UUID=${uuid}[[:space:]]+/[[:space:]]" "$MNT/etc/fstab"
     check "fstab mounts /boot" grep -Eq '^[^#][^[:space:]]*[[:space:]]+/boot[[:space:]]' "$MNT/etc/fstab"
     check "user $USER_NAME exists" arch-chroot "$MNT" id -u "$USER_NAME"
     check "os-release says Kiln Linux" grep -q '^ID=kiln' "$MNT/usr/lib/os-release"

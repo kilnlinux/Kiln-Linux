@@ -20,7 +20,9 @@ t "kiln: cargo clippy, no warnings" cargo clippy --quiet --manifest-path package
 shells=(packages/kiln-install/kiln-install scripts/*.sh archiso/kiln/profiledef.sh packages/*/PKGBUILD packages/twmx/twmx-update-kiln packages/kiln-updates/kiln-updates.sh)
 for f in "${shells[@]}"; do t "bash -n $f" bash -n "$f"; done
 if command -v shellcheck >/dev/null; then
-    t "shellcheck" shellcheck -S warning "${shells[@]}"
+    # PKGBUILDs only get bash -n: makepkg's variables (pkgdir, pkgname...) are shellcheck false positives.
+    mapfile -t checked < <(printf '%s\n' "${shells[@]}" | grep -v PKGBUILD)
+    t "shellcheck" shellcheck -S warning "${checked[@]}"
 else
     echo "skip shellcheck (not installed)"
 fi
