@@ -159,3 +159,12 @@ echo 'TUI: required choices, review status, auto/manual disk confirmation and Es
 result = subprocess.run(["bash"], input=functions + ui_checks, capture_output=True, text=True, timeout=10)
 assert result.returncode == 0, (result.stdout, result.stderr)
 print(result.stdout.strip())
+
+# The BIOS boot partition type must be one sfdisk (and so GRUB) recognizes; stubs never check this.
+guid = next(line.split("=", 1)[1] for line in source.splitlines() if line.startswith("readonly BIOS_BOOT_TYPE="))
+with tempfile.NamedTemporaryFile() as image:
+    image.truncate(8 * 1024 * 1024)
+    subprocess.run(["sfdisk", "-q", image.name], input=f"label: gpt\n,1MiB,{guid}\n", text=True, check=True, capture_output=True)
+    listing = subprocess.run(["sfdisk", "-l", image.name], text=True, check=True, capture_output=True).stdout
+    assert "BIOS boot" in listing, listing
+print("BIOS boot partition type: sfdisk names it BIOS boot.")

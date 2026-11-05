@@ -67,11 +67,21 @@ is Kiln's (applied by the pacman hook during the build), root shell is bash,
 
 ## QEMU, end to end: `make e2e`
 
-`tests/qemu/run.sh` boots the newest ISO in QEMU (UEFI, OVMF, KVM), edits the
-boot entry with simulated keypresses to add `script=http://10.0.2.2:8000/test.sh`,
-and the live system runs `kiln-install --config tests/qemu/install.cfg`
-(erase `/dev/vda`, ext4, twmx). It then boots the installed disk, logs in,
-and takes screenshots into `build/e2e/`.
+`tests/qemu/run.sh` boots the newest ISO in QEMU (KVM), edits the boot entry
+with simulated keypresses to add `script=http://10.0.2.2:8000/test.sh`, and
+the live system runs `kiln-install --config` with `tests/qemu/install.cfg`
+(erase `/dev/vda`, ext4). It then boots the installed disk and takes
+screenshots. Desktops started from tty1 (twmx, i3, sway, Hyprland) get logged
+in; twmx also opens xterm and runs `kiln list`. The others show their login
+manager. Choose the combination with environment variables:
+
+```sh
+make e2e                                             # twmx, UEFI, systemd-boot
+DESKTOP=gnome make e2e                               # any key of DESKTOPS in kiln-install
+FIRMWARE=bios BOOTLOADER=limine make e2e             # BIOS: grub (default) or limine
+```
+
+Output lands in `build/e2e/<desktop>-<firmware>-<bootloader>/`.
 
 Run on 2026-11-03:
 
@@ -84,6 +94,16 @@ Run on 2026-11-03:
   shows the Kiln logo and `OS: Kiln Linux`, `kiln list` shows core and twmx,
   `systemctl --failed` is empty, `startx` starts twmx and Super+Return opens
   the themed xterm.
+
+Run on 2026-11-05, with `make e2e` in each combination below: install,
+validation, boot and tty1 login all passed.
+
+- twmx, BIOS, GRUB and twmx, BIOS, Limine: twmx starts, xterm runs `kiln list`.
+  Before this, both failed at `grub-install`/`limine bios-install` because
+  the installer wrote the wrong GPT type GUID for the BIOS boot partition
+  (v0.1.0 cannot install on BIOS).
+- twmx, UEFI, Limine and twmx, UEFI, GRUB: same result.
+- i3, UEFI, systemd-boot: i3 starts with the Kiln Graphite bar.
 
 Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
@@ -102,17 +122,14 @@ partitions in the installer.
 ## Not yet tested
 
 - [ ] btrfs, a root password
-- [ ] Kiln Graphite configs for i3, sway and Hyprland (rendered by `make test`;
+- [ ] Kiln Graphite configs for sway and Hyprland (rendered by `make test`;
       never started). twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
       bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
-      battery modules hide on a machine without them; not yet on an installed system
+      battery modules hide on a machine without them; on installed systems since 2026-11-05 (above)
 - [ ] kernels other than `linux` (`linux-lts`, `linux-zen`, `linux-hardened`), and several at once
       (one boot entry each; dry-run only)
-- [ ] GRUB and Limine, on UEFI and on BIOS (`make run-bios`, then
-      `make run-disk-bios`); dry-run with stubbed commands only: each writes
-      the expected loader commands, pacman hook and kernel command line
 - [ ] LUKS2 root encryption (`ENCRYPT=yes`): install, passphrase prompt at boot
-- [ ] desktops other than twmx: i3, sway, Hyprland, XFCE, Plasma, GNOME
+- [ ] desktops other than twmx and i3: sway, Hyprland, XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
 - [ ] installer failure path under real faults (e.g. pull the network during
       pacstrap); `tests/installer.py` covers each stage failing with mocked commands
