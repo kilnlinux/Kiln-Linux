@@ -21,7 +21,7 @@ readonly BT="Kiln Linux installation -- https://kilnlinux.org"
 readonly CRYPT_NAME=kilnroot   # /dev/mapper name of the unlocked root
 readonly MIN_BYTES=$((8 * 1024 * 1024 * 1024))
 # GPT type of the BIOS boot partition, where GRUB and Limine put their BIOS stage 2.
-readonly BIOS_BOOT_TYPE=21686148-6449-6e61-6e6f-744e656564ef
+readonly BIOS_BOOT_TYPE=21686148-6449-6e6f-744e-656564454649
 if [[ -d /sys/firmware/efi/efivars ]]; then FIRMWARE=uefi; else FIRMWARE=bios; fi
 readonly FIRMWARE
 
