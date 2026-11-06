@@ -9,6 +9,9 @@ rc=$?
 if ((rc == 0)); then
     # Auto partitioning puts root last (after the BIOS boot partition on BIOS).
     root=$(lsblk -lnpo NAME,TYPE /dev/vda | awk '$2 == "part" { p = $1 } END { print p }')
+    if [[ $(lsblk -no FSTYPE "$root") == crypto_LUKS ]]; then
+        echo -n kilntest-luks | cryptsetup open "$root" e2eroot --key-file=- && root=/dev/mapper/e2eroot
+    fi
     if mount "$root" /mnt; then
         arch-chroot /mnt pacman -Qo /usr/bin/kiln &&
             arch-chroot /mnt pacman -Q kiln-updates &&
@@ -16,6 +19,7 @@ if ((rc == 0)); then
             arch-chroot /mnt kiln-update --check
         rc=$?
         umount /mnt || rc=1
+        [[ ! -e /dev/mapper/e2eroot ]] || cryptsetup close e2eroot
     else
         rc=1
     fi
