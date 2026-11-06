@@ -79,9 +79,12 @@ manager. Choose the combination with environment variables:
 make e2e                                             # twmx, UEFI, systemd-boot
 DESKTOP=gnome make e2e                               # any key of DESKTOPS in kiln-install
 FIRMWARE=bios BOOTLOADER=limine make e2e             # BIOS: grub (default) or limine
+ENCRYPT=yes make e2e                                 # LUKS2 root; the test types the passphrase at boot
+FS=btrfs KERNEL=linux-lts make e2e                   # btrfs root, another kernel
 ```
 
-Output lands in `build/e2e/<desktop>-<firmware>-<bootloader>/`.
+Output lands in `build/e2e/<desktop>-<firmware>-<bootloader>/`, with `-<fs>`,
+`-luks` and `-<kernel>` added when they aren't the defaults.
 
 Run on 2026-11-03:
 
@@ -105,6 +108,13 @@ validation, boot and tty1 login all passed.
 - twmx, UEFI, Limine and twmx, UEFI, GRUB: same result.
 - i3, UEFI, systemd-boot: i3 starts with the Kiln Graphite bar.
 
+Run on 2026-11-06, same checks:
+
+- twmx, UEFI, systemd-boot, LUKS2 and twmx, BIOS, GRUB, LUKS2: the initramfs
+  asks `Please enter passphrase for disk kilnroot`, the typed passphrase
+  unlocks root, twmx starts.
+- twmx, UEFI, systemd-boot, btrfs root, `linux-lts` as the only kernel: twmx starts.
+
 Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
 Validation refused to report success; the entry is gone now.
@@ -121,14 +131,14 @@ partitions in the installer.
 
 ## Not yet tested
 
-- [ ] btrfs, a root password
+- [ ] a root password
 - [ ] Kiln Graphite configs for sway and Hyprland (rendered by `make test`;
       never started). twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
       bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
       battery modules hide on a machine without them; on installed systems since 2026-11-05 (above)
-- [ ] kernels other than `linux` (`linux-lts`, `linux-zen`, `linux-hardened`), and several at once
-      (one boot entry each; dry-run only)
-- [ ] LUKS2 root encryption (`ENCRYPT=yes`): install, passphrase prompt at boot
+- [ ] `linux-zen`, `linux-hardened`, and several kernels at once (one boot entry
+      each; dry-run only). `linux-lts` alone passes `make e2e`
+- [ ] LUKS2 with Limine (systemd-boot and GRUB pass `make e2e`)
 - [ ] desktops other than twmx and i3: sway, Hyprland, XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
 - [ ] installer failure path under real faults (e.g. pull the network during
