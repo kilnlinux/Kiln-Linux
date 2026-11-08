@@ -45,7 +45,7 @@ class VM:
         except socket.timeout: pass
     def shot(self, name): self.hmp(f'screendump {self.d}/{name} -f png'); time.sleep(0.5)
     def keys(self, text):
-        m = {' ': 'spc', '\n': 'ret', '-': 'minus', '.': 'dot', '/': 'slash', '_': 'shift-minus', ':': 'shift-semicolon', '=': 'equal', ',': 'comma', '|': 'shift-backslash', '>': 'shift-dot', '&': 'shift-7', ';': 'semicolon', "'": 'apostrophe'}
+        m = {' ': 'spc', '\n': 'ret', '-': 'minus', '.': 'dot', '/': 'slash', '_': 'shift-minus', ':': 'shift-semicolon', '=': 'equal', ',': 'comma', '|': 'shift-backslash', '>': 'shift-dot', '&': 'shift-7', ';': 'semicolon', "'": 'apostrophe', '$': 'shift-4', '(': 'shift-9', ')': 'shift-0', '*': 'shift-8'}
         for ch in text:
             k = m.get(ch) or (f'shift-{ch.lower()}' if ch.isupper() else ch)
             self.hmp(f'sendkey {k}')

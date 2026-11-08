@@ -16,5 +16,9 @@ official = [
     "grim",           # screenshots (Print)
     "slurp",          # region selection for Shift+Print
     "polkit",
+    "pipewire",       # audio: waybar's volume module exits waybar without wireplumber
+    "pipewire-pulse",
+    "pipewire-alsa",
+    "wireplumber",
     "ttf-dejavu",
 ]
