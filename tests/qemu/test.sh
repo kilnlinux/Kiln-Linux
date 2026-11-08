@@ -17,6 +17,9 @@ if ((rc == 0)); then
             arch-chroot /mnt pacman -Q kiln-updates &&
             arch-chroot /mnt systemctl is-enabled kiln-update.timer &&
             arch-chroot /mnt kiln-update --check &&
+            # filesystem owns os-release; its upgrade must not bring back Arch's (pacman reinstall counts as Upgrade)
+            arch-chroot /mnt pacman -S --noconfirm filesystem &&
+            grep -q '^ID=kiln' /mnt/usr/lib/os-release &&
             arch-chroot /mnt gpasswd -a kilntest uucp  # test only: lets the boot check write to /dev/ttyS0
         rc=$?
         umount /mnt || rc=1

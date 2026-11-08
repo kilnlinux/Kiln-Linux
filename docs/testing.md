@@ -124,6 +124,11 @@ Hyprland run had no bar: waybar's volume module exits waybar when wireplumber
 is missing, and audio was only an optional extra. The hyprland profile now
 installs PipeWire and wireplumber.
 
+Then, on the ISO rebuilt with that change: twmx and i3 (UEFI, systemd-boot),
+twmx on BIOS with Limine and LUKS2, and twmx with `linux-zen` as the only
+kernel all pass. The last two also reinstall `filesystem` in the installed
+system and check that `/usr/lib/os-release` still says `ID=kiln`; it does.
+
 Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
 Validation refused to report success; the entry is gone now.
@@ -145,14 +150,12 @@ partitions in the installer.
       on 2026-11-07, not reviewed beyond the bar and terminal. twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
       bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
       battery modules hide on a machine without them; on installed systems since 2026-11-05 (above)
-- [ ] `linux-zen`, `linux-hardened`, and several kernels at once (one boot entry
-      each; dry-run only). `linux-lts` alone passes `make e2e`
-- [ ] LUKS2 with Limine (systemd-boot and GRUB pass `make e2e`)
+- [ ] `linux-hardened`, and several kernels at once (one boot entry
+      each; dry-run only). `linux-lts` and `linux-zen` alone pass `make e2e`
 - [ ] desktops other than twmx, i3, sway and Hyprland: XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
 - [ ] installer failure path under real faults (e.g. pull the network during
       pacstrap); `tests/installer.py` covers each stage failing with mocked commands
-- [ ] `sudo pacman -Syu` on the installed system keeps Kiln's os-release
 - [ ] real hardware
 
 ## Resource use
