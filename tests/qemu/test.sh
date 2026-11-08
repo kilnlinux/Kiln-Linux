@@ -16,7 +16,8 @@ if ((rc == 0)); then
         arch-chroot /mnt pacman -Qo /usr/bin/kiln &&
             arch-chroot /mnt pacman -Q kiln-updates &&
             arch-chroot /mnt systemctl is-enabled kiln-update.timer &&
-            arch-chroot /mnt kiln-update --check
+            arch-chroot /mnt kiln-update --check &&
+            arch-chroot /mnt gpasswd -a kilntest uucp  # test only: lets the boot check write to /dev/ttyS0
         rc=$?
         umount /mnt || rc=1
         [[ ! -e /dev/mapper/e2eroot ]] || cryptsetup close e2eroot

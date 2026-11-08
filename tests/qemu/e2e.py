@@ -25,10 +25,14 @@ else:
     if encrypt == 'yes':   # sd-encrypt asks on the console once the initramfs is up
         time.sleep(16); v.shot('boot-luks.png'); v.keys('kilntest-luks\n')
     time.sleep(56); v.shot('boot-login.png')
-    if desktop in ('twmx', 'i3', 'sway', 'hyprland'):  # started by a tty1 login; others show a login manager
+    wm, bar = {'twmx': ('twmx', 'polybar'), 'i3': ('i3', 'i3bar'), 'sway': ('sway', 'swaybar'),
+               'hyprland': ('Hyprland', 'waybar')}.get(desktop, (None, None))
+    if wm:  # started by a tty1 login; others show a login manager
         v.keys('kilntest\n'); time.sleep(2); v.keys('kilntest-pw\n')
         time.sleep(15); v.shot('boot-desktop.png')
-    if desktop == 'twmx':
-        v.hmp('sendkey meta_l-ret'); time.sleep(3)      # Super+Return: xterm
-        v.keys('kiln list\n'); time.sleep(4); v.shot('boot-twmx.png')
+        v.hmp('sendkey meta_l-ret'); time.sleep(3)      # Super+Return: the desktop's terminal
+        v.keys(f'kiln list && pgrep -x {wm} && pgrep -x {bar} && echo KILNTEST-BOOT-OK >/dev/ttyS0\n')
+        try: v.expect('KILNTEST-BOOT-OK', 60)
+        except SystemExit: v.shot('boot-terminal.png'); v.kill(); raise   # don't leave qemu running
+        v.shot('boot-terminal.png')
     v.hmp('system_powerdown'); time.sleep(10); v.kill()

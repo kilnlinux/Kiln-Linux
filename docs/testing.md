@@ -72,8 +72,10 @@ with simulated keypresses to add `script=http://10.0.2.2:8000/test.sh`, and
 the live system runs `kiln-install --config` with `tests/qemu/install.cfg`
 (erase `/dev/vda`, ext4). It then boots the installed disk and takes
 screenshots. Desktops started from tty1 (twmx, i3, sway, Hyprland) get logged
-in; twmx also opens xterm and runs `kiln list`. The others show their login
-manager. Choose the combination with environment variables:
+in, open their terminal with Super+Return and run `kiln list`; the run fails
+unless that terminal reports to serial that `kiln list` worked and the window
+manager and its bar are running. The others show their login manager,
+checked only by screenshot. Choose the combination with environment variables:
 
 ```sh
 make e2e                                             # twmx, UEFI, systemd-boot
@@ -115,6 +117,13 @@ Run on 2026-11-06, same checks:
   unlocks root, twmx starts.
 - twmx, UEFI, systemd-boot, btrfs root, `linux-lts` as the only kernel: twmx starts.
 
+Run on 2026-11-07, with the serial check (terminal, `kiln list`, window
+manager and bar running): twmx, sway and Hyprland on UEFI, systemd-boot all
+pass. sway and Hyprland run under QEMU's `-vga std` with no GPU. The first
+Hyprland run had no bar: waybar's volume module exits waybar when wireplumber
+is missing, and audio was only an optional extra. The hyprland profile now
+installs PipeWire and wireplumber.
+
 Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
 Validation refused to report success; the entry is gone now.
@@ -132,14 +141,14 @@ partitions in the installer.
 ## Not yet tested
 
 - [ ] a root password
-- [ ] Kiln Graphite configs for sway and Hyprland (rendered by `make test`;
-      never started). twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
+- [ ] Kiln Graphite configs for sway and Hyprland: started in `make e2e`
+      on 2026-11-07, not reviewed beyond the bar and terminal. twmx + polybar ran in Xephyr from the real `.xinitrc` on 2026-11-03:
       bar, workspaces, title, volume, clock, borders and xterm colors show; Wi-Fi and
       battery modules hide on a machine without them; on installed systems since 2026-11-05 (above)
 - [ ] `linux-zen`, `linux-hardened`, and several kernels at once (one boot entry
       each; dry-run only). `linux-lts` alone passes `make e2e`
 - [ ] LUKS2 with Limine (systemd-boot and GRUB pass `make e2e`)
-- [ ] desktops other than twmx and i3: sway, Hyprland, XFCE, Plasma, GNOME
+- [ ] desktops other than twmx, i3, sway and Hyprland: XFCE, Plasma, GNOME
       (profiles plan cleanly; packages exist; not installed in a VM)
 - [ ] installer failure path under real faults (e.g. pull the network during
       pacstrap); `tests/installer.py` covers each stage failing with mocked commands

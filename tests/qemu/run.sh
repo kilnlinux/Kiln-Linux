@@ -4,7 +4,8 @@
 #     entry with simulated keypresses; the live system fetches and runs it,
 #     which runs `kiln-install --config install.cfg` on a blank virtio disk
 #  2. boot the installed disk and screenshot it; desktops started from tty1
-#     get logged in, and twmx also opens xterm and runs kiln list
+#     get logged in, open their terminal with Super+Return and must print
+#     KILNTEST-BOOT-OK to serial (kiln list works, the window manager and its bar run)
 # Environment: DESKTOP (twmx), FIRMWARE (uefi or bios), BOOTLOADER (systemd-boot
 # on UEFI, grub on BIOS), FS (ext4 or btrfs), ENCRYPT (no or yes), KERNEL (linux).
 # Screenshots and serial logs land in build/e2e/<desktop>-<firmware>-<bootloader>,
