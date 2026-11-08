@@ -467,7 +467,8 @@ partition_and_mount() {
 install_base() {
     # mkinitcpio and iptables named explicitly: they are the defaults pacman would
     # pick among several providers anyway, but this skips its "choose a provider" prompts.
-    local pkgs=(base "${KERNEL[@]}" linux-firmware mkinitcpio iptables dosfstools)
+    # sof-firmware: the audio DSP firmware most Intel laptops since about 2019 (and some AMD) need for any sound.
+    local pkgs=(base "${KERNEL[@]}" linux-firmware sof-firmware mkinitcpio iptables dosfstools)
     case $FS in
         ext4) pkgs+=(e2fsprogs) ;;
         btrfs) pkgs+=(btrfs-progs) ;;

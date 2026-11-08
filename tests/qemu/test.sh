@@ -15,6 +15,7 @@ if ((rc == 0)); then
     if mount "$root" /mnt; then
         arch-chroot /mnt pacman -Qo /usr/bin/kiln &&
             arch-chroot /mnt pacman -Q kiln-updates &&
+            arch-chroot /mnt pacman -Q sof-firmware &&
             arch-chroot /mnt systemctl is-enabled kiln-update.timer &&
             arch-chroot /mnt kiln-update --check &&
             # filesystem owns os-release; its upgrade must not bring back Arch's (pacman reinstall counts as Upgrade)
