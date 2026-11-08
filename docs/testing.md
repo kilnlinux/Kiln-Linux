@@ -129,6 +129,11 @@ twmx on BIOS with Limine and LUKS2, and twmx with `linux-zen` as the only
 kernel all pass. The last two also reinstall `filesystem` in the installed
 system and check that `/usr/lib/os-release` still says `ID=kiln`; it does.
 
+Run on 2026-11-08, on the 2026.11.07 ISO: XFCE, Plasma and GNOME (UEFI,
+systemd-boot) install, validate and boot to their login manager (LightDM,
+SDDM with the Plasma (Wayland) session, GDM). Checked by screenshot only; the
+test does not log in. GDM shows the Arch logo, not Kiln's.
+
 Earlier, a manual install on a VM caught a real bug: the installer wrote a
 boot entry for a fallback initramfs that current Arch no longer builds.
 Validation refused to report success; the entry is gone now.
@@ -152,8 +157,8 @@ partitions in the installer.
       battery modules hide on a machine without them; on installed systems since 2026-11-05 (above)
 - [ ] `linux-hardened`, and several kernels at once (one boot entry
       each; dry-run only). `linux-lts` and `linux-zen` alone pass `make e2e`
-- [ ] desktops other than twmx, i3, sway and Hyprland: XFCE, Plasma, GNOME
-      (profiles plan cleanly; packages exist; not installed in a VM)
+- [ ] logging in to XFCE, Plasma and GNOME: `make e2e` on 2026-11-08 only
+      checks that their login manager appears
 - [ ] installer failure path under real faults (e.g. pull the network during
       pacstrap); `tests/installer.py` covers each stage failing with mocked commands
 - [ ] real hardware
