@@ -152,9 +152,10 @@ result into twmx, and that path works today. Still missing:
 - a hosted repository for `[kiln]` package updates; twmx currently updates per user from GitHub
 - broader hardware testing
 
-The other six desktops go through the same installer steps, but nobody has
-installed each one in a VM yet. [docs/testing.md](docs/testing.md) keeps the
-list.
+All seven desktops install and boot in `make e2e`; XFCE, Plasma and GNOME
+are checked only up to their login screen. The live ISO has booted on real
+hardware, but nobody has installed on it yet.
+[docs/testing.md](docs/testing.md) keeps the list.
 
 ## License
 

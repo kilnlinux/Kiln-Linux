@@ -161,7 +161,8 @@ partitions in the installer.
       checks that their login manager appears
 - [ ] installer failure path under real faults (e.g. pull the network during
       pacstrap); `tests/installer.py` covers each stage failing with mocked commands
-- [ ] real hardware
+- [ ] installing on real hardware. The live ISO booted from a USB stick on a
+      real PC on 2026-11-08; nothing was installed
 
 ## Resource use
 

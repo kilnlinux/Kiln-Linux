@@ -79,7 +79,7 @@ Window managers (twmx, i3, sway, Hyprland) start from a TTY; desktop
 environments (XFCE, Plasma, GNOME) get their login screen enabled.
 
 Install steps: GPT with a 1 GiB EFI system partition and a root partition;
-`pacstrap -K` of `base linux linux-firmware`, CPU microcode and filesystem
+`pacstrap -K` of `base`, the chosen kernels, `linux-firmware`, `sof-firmware`, CPU microcode and filesystem
 tools; `genfstab -U`; time zone, locale, keymap, hostname; `kiln apply` of
 each chosen profile inside the chroot; user with sudo, root locked or with
 the password you chose;
